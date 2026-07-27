@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rechnungs-Archiv</title>
+<script src="lib/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #e0e2e7;
+    --text: #1c1e21;
+    --muted: #6b7280;
+    --accent: #b5651d;
+    --accent-hover: #96521a;
+    --danger: #b3261e;
+    --ok: #2e7d32;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.4;
+  }
+  header {
+    padding: 20px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+  main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px 16px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+  }
+  .panel h2 {
+    margin: 0 0 12px;
+    font-size: 1.05rem;
+  }
+  .row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  input[type=text], input[type=password], input[type=date], input[type=number], select, textarea {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    width: 100%;
+    background: #fff;
+    color: var(--text);
+  }
+  .field { flex: 1 1 180px; min-width: 140px; }
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 16px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    transition: background .15s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary {
+    background: #fff;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { background: #f0f0f0; }
+  button.danger { background: var(--danger); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 30px;
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .dropzone.drag { border-color: var(--accent); background: #fdf6ee; }
+  .dropzone img { max-width: 100%; max-height: 320px; border-radius: 6px; margin-top: 10px; }
+  .status { font-size: 0.85rem; margin-top: 8px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--danger); }
+  .status.info { color: var(--muted); }
+  .hidden { display: none !important; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  th, td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    white-space: nowrap;
+  }
+  th { color: var(--muted); font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(0,0,0,0.15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    vertical-align: -3px;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  details summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: 0.75rem;
+  }
+  .footer-note {
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-align: center;
+    margin-top: 10px;
+  }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Rechnungs-Archiv</h1>
+  <p>Foto hochladen &rarr; per Claude auslesen &rarr; in Excel erfassen &rarr; Original archivieren.</p>
+</header>
+
+<main>
+
+  <!-- Konfiguration -->
+  <section class="panel">
+    <h2>Einstellungen</h2>
+    <div class="row">
+      <div class="field" style="flex-basis: 320px;">
+        <label for="apiKey">Claude API-Key</label>
+        <input type="password" id="apiKey" placeholder="sk-ant-...">
+      </div>
+      <div class="field" style="flex-basis: 220px;">
+        <label for="model">Modell</label>
+        <select id="model">
+          <option value="claude-sonnet-5">claude-sonnet-5 (empfohlen)</option>
+          <option value="claude-opus-5">claude-opus-5</option>
+          <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (schnell/günstig)</option>
+        </select>
+      </div>
+      <div class="field" style="flex: 0 0 auto; align-self: flex-end;">
+        <button id="saveKeyBtn" class="secondary">Key lokal speichern</button>
+      </div>
+    </div>
+    <div id="keyStatus" class="status info"></div>
+    <details style="margin-top:10px;">
+      <summary>Hinweise zu API-Key &amp; Datenschutz</summary>
+      <p style="font-size:0.85rem; color:var(--muted);">
+        Der Key wird nur in deinem Browser (localStorage) gespeichert und ausschließlich direkt an
+        <code>api.anthropic.com</code> gesendet &mdash; es gibt keinen Zwischenserver. Diese App läuft komplett
+        client-seitig; das bedeutet der Key ist im Browser sichtbar (z.B. über die Entwicklertools).
+        Nutze ihn daher nur auf deinem eigenen, vertrauenswürdigen Gerät und nicht auf einem geteilten Rechner.
+        Rechnungsfotos werden zur Auswertung an die Claude-API übertragen.
+      </p>
+    </details>
+
+    <div class="row" style="margin-top:14px;">
+      <button id="pickFolderBtn" class="secondary">Archivordner wählen</button>
+      <span id="folderStatus" class="status info">Kein Ordner gewählt &mdash; Dateien werden stattdessen einzeln heruntergeladen.</span>
+    </div>
+  </section>
+
+  <!-- Upload -->
+  <section class="panel">
+    <h2>1. Rechnung hochladen</h2>
+    <div id="dropzone" class="dropzone">
+      <div id="dropzoneText">
+        📄 Bild hierher ziehen, klicken zum Auswählen, oder direkt fotografieren (mobil)
+      </div>
+      <img id="preview" class="hidden">
+    </div>
+    <input type="file" id="fileInput" accept="image/*" class="hidden">
+    <div class="row" style="margin-top:12px;">
+      <button id="analyzeBtn" disabled>Rechnung analysieren</button>
+      <button id="clearImageBtn" class="secondary hidden">Bild entfernen</button>
+    </div>
+    <div id="analyzeStatus" class="status info"></div>
+  </section>
+
+  <!-- Extrahierte Felder -->
+  <section class="panel hidden" id="formPanel">
+    <h2>2. Erkannte Daten prüfen &amp; korrigieren</h2>
+    <div class="row">
+      <div class="field"><label for="f_datum">Rechnungsdatum</label><input type="date" id="f_datum"></div>
+      <div class="field" style="flex-basis:260px;"><label for="f_lieferant">Lieferant / Aussteller</label><input type="text" id="f_lieferant"></div>
+      <div class="field"><label for="f_rechnungsnummer">Rechnungsnummer</label><input type="text" id="f_rechnungsnummer"></div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field"><label for="f_netto">Nettobetrag</label><input type="number" step="0.01" id="f_netto"></div>
+      <div class="field"><label for="f_mwst_satz">MwSt-Satz (%)</label><input type="number" step="0.01" id="f_mwst_satz"></div>
+      <div class="field"><label for="f_mwst_betrag">MwSt-Betrag</label><input type="number" step="0.01" id="f_mwst_betrag"></div>
+      <div class="field"><label for="f_gesamt">Gesamtbetrag (Brutto)</label><input type="number" step="0.01" id="f_gesamt"></div>
+      <div class="field" style="flex-basis:100px;"><label for="f_waehrung">Währung</label><input type="text" id="f_waehrung" value="EUR"></div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field"><label for="f_kategorie">Kategorie</label><input type="text" id="f_kategorie" placeholder="z.B. Büromaterial, Reise, Software..."></div>
+      <div class="field" style="flex-basis:100%;"><label for="f_notizen">Notizen</label><textarea id="f_notizen" rows="2"></textarea></div>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button id="saveInvoiceBtn">Speichern &amp; archivieren</button>
+      <button id="discardBtn" class="secondary">Verwerfen</button>
+    </div>
+    <div id="saveStatus" class="status info"></div>
+  </section>
+
+  <!-- Archiv-Tabelle -->
+  <section class="panel">
+    <h2>3. Archiv <span id="countBadge" class="badge">0 Rechnungen</span></h2>
+    <div class="table-wrap">
+      <table id="invoiceTable">
+        <thead>
+          <tr>
+            <th>Datum</th><th>Lieferant</th><th>Rechnungsnr.</th><th>Netto</th>
+            <th>MwSt %</th><th>MwSt-Betrag</th><th>Gesamt</th><th>Währung</th>
+            <th>Kategorie</th><th>Archivdatei</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="invoiceTbody"></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button id="exportBtn" class="secondary">Excel exportieren (.xlsx)</button>
+      <button id="clearAllBtn" class="danger">Alle Einträge löschen</button>
+    </div>
+    <div id="exportStatus" class="status info"></div>
+  </section>
+
+  <p class="footer-note">Alle Daten bleiben lokal in deinem Browser (localStorage), bis du sie exportierst oder in deinen Archivordner schreibst.</p>
+
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Persistente Konfiguration ----------
+  const LS_KEY_API = "rechnungsapp_apikey";
+  const LS_KEY_MODEL = "rechnungsapp_model";
+  const LS_KEY_INVOICES = "rechnungsapp_invoices";
+
+  const apiKeyInput = document.getElementById("apiKey");
+  const modelSelect = document.getElementById("model");
+  const saveKeyBtn = document.getElementById("saveKeyBtn");
+  const keyStatus = document.getElementById("keyStatus");
+
+  apiKeyInput.value = localStorage.getItem(LS_KEY_API) || "";
+  modelSelect.value = localStorage.getItem(LS_KEY_MODEL) || "claude-sonnet-5";
+  if (apiKeyInput.value) {
+    keyStatus.textContent = "Gespeicherter Key geladen.";
+    keyStatus.className = "status ok";
+  }
+
+  saveKeyBtn.addEventListener("click", () => {
+    localStorage.setItem(LS_KEY_API, apiKeyInput.value.trim());
+    localStorage.setItem(LS_KEY_MODEL, modelSelect.value);
+    keyStatus.textContent = "Gespeichert.";
+    keyStatus.className = "status ok";
+  });
+  modelSelect.addEventListener("change", () => {
+    localStorage.setItem(LS_KEY_MODEL, modelSelect.value);
+  });
+
+  // ---------- Archivordner (File System Access API, optional) ----------
+  let dirHandle = null;
+  const pickFolderBtn = document.getElementById("pickFolderBtn");
+  const folderStatus = document.getElementById("folderStatus");
+  const supportsFS = "showDirectoryPicker" in window;
+
+  if (!supportsFS) {
+    pickFolderBtn.disabled = true;
+    folderStatus.textContent = "Dieser Browser unterstützt keine direkte Ordner-Anbindung (funktioniert z.B. in Chrome/Edge). Dateien werden stattdessen einzeln heruntergeladen.";
+  }
+
+  pickFolderBtn.addEventListener("click", async () => {
+    try {
+      dirHandle = await window.showDirectoryPicker();
+      folderStatus.textContent = `Archivordner verbunden: "${dirHandle.name}". Fotos & Excel-Datei werden dort automatisch abgelegt.`;
+      folderStatus.className = "status ok";
+    } catch (e) {
+      if (e.name !== "AbortError") {
+        folderStatus.textContent = "Ordnerauswahl fehlgeschlagen: " + e.message;
+        folderStatus.className = "status err";
+      }
+    }
+  });
+
+  async function writeFileToDir(filename, blob) {
+    if (!dirHandle) return false;
+    const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+  }
+
+  function downloadBlob(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  // ---------- Upload / Bildauswahl ----------
+  const dropzone = document.getElementById("dropzone");
+  const dropzoneText = document.getElementById("dropzoneText");
+  const fileInput = document.getElementById("fileInput");
+  const preview = document.getElementById("preview");
+  const analyzeBtn = document.getElementById("analyzeBtn");
+  const clearImageBtn = document.getElementById("clearImageBtn");
+  const analyzeStatus = document.getElementById("analyzeStatus");
+
+  let currentFile = null;   // File
+  let currentDataUrl = null; // "data:image/...;base64,...."
+
+  dropzone.addEventListener("click", () => fileInput.click());
+  dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag"); });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("drag");
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  clearImageBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    resetImage();
+  });
+
+  function resetImage() {
+    currentFile = null;
+    currentDataUrl = null;
+    preview.classList.add("hidden");
+    preview.src = "";
+    dropzoneText.classList.remove("hidden");
+    clearImageBtn.classList.add("hidden");
+    analyzeBtn.disabled = true;
+    fileInput.value = "";
+    analyzeStatus.textContent = "";
+    formPanel.classList.add("hidden");
+  }
+
+  function handleFile(file) {
+    if (!file.type.startsWith("image/")) {
+      analyzeStatus.textContent = "Bitte eine Bilddatei auswählen.";
+      analyzeStatus.className = "status err";
+      return;
+    }
+    currentFile = file;
+    const reader = new FileReader();
+    reader.onload = () => {
+      currentDataUrl = reader.result;
+      preview.src = currentDataUrl;
+      preview.classList.remove("hidden");
+      dropzoneText.classList.add("hidden");
+      clearImageBtn.classList.remove("hidden");
+      analyzeBtn.disabled = false;
+      analyzeStatus.textContent = "";
+      formPanel.classList.add("hidden");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ---------- Claude Vision Auswertung ----------
+  const EXTRACT_TOOL = {
+    name: "extract_invoice",
+    description: "Extrahiert strukturierte Rechnungsdaten aus einem Rechnungsfoto.",
+    input_schema: {
+      type: "object",
+      properties: {
+        datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD. Falls unklar, bestmöglich schätzen." },
+        lieferant: { type: "string", description: "Name des Rechnungsstellers / Lieferanten / Geschäfts." },
+        rechnungsnummer: { type: "string", description: "Rechnungs- oder Belegnummer, falls vorhanden, sonst leer lassen." },
+        nettobetrag: { type: "number", description: "Nettobetrag ohne MwSt, falls erkennbar." },
+        mwst_satz: { type: "number", description: "Mehrwertsteuersatz in Prozent, z.B. 19 oder 7." },
+        mwst_betrag: { type: "number", description: "Mehrwertsteuerbetrag in Währungseinheiten." },
+        gesamtbetrag: { type: "number", description: "Gesamtbetrag / Bruttobetrag der Rechnung." },
+        waehrung: { type: "string", description: "Währungscode, z.B. EUR, CHF, USD." },
+        kategorie: { type: "string", description: "Grobe Ausgabenkategorie, bestmöglich geschätzt (z.B. Büromaterial, Reise, Software, Bewirtung)." },
+        notizen: { type: "string", description: "Sonstige relevante Hinweise, z.B. Unsicherheiten bei der Erkennung." }
+      },
+      required: ["datum", "lieferant", "rechnungsnummer", "gesamtbetrag", "mwst_betrag", "waehrung"]
+    }
+  };
+
+  const analyzeBtnEl = analyzeBtn;
+  analyzeBtnEl.addEventListener("click", analyzeInvoice);
+
+  async function analyzeInvoice() {
+    const apiKey = apiKeyInput.value.trim();
+    if (!apiKey) {
+      analyzeStatus.textContent = "Bitte zuerst einen API-Key eingeben und speichern.";
+      analyzeStatus.className = "status err";
+      return;
+    }
+    if (!currentDataUrl) return;
+
+    analyzeBtnEl.disabled = true;
+    analyzeStatus.innerHTML = '<span class="spinner"></span>Rechnung wird analysiert...';
+    analyzeStatus.className = "status info";
+
+    try {
+      const commaIdx = currentDataUrl.indexOf(",");
+      const meta = currentDataUrl.substring(5, currentDataUrl.indexOf(";"));
+      const base64Data = currentDataUrl.substring(commaIdx + 1);
+
+      const body = {
+        model: modelSelect.value,
+        max_tokens: 1024,
+        tools: [EXTRACT_TOOL],
+        tool_choice: { type: "tool", name: "extract_invoice" },
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: meta, data: base64Data } },
+              { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol." }
+            ]
+          }
+        ]
+      };
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`API-Fehler ${resp.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const data = await resp.json();
+      const toolBlock = (data.content || []).find(b => b.type === "tool_use");
+      if (!toolBlock) {
+        throw new Error("Keine strukturierten Daten in der Antwort gefunden.");
+      }
+
+      fillForm(toolBlock.input || {});
+      analyzeStatus.textContent = "Erkennung abgeschlossen. Bitte Daten prüfen.";
+      analyzeStatus.className = "status ok";
+      formPanel.classList.remove("hidden");
+      formPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (err) {
+      console.error(err);
+      analyzeStatus.textContent = "Fehler: " + err.message;
+      analyzeStatus.className = "status err";
+    } finally {
+      analyzeBtnEl.disabled = false;
+    }
+  }
+
+  // ---------- Formular ----------
+  const formPanel = document.getElementById("formPanel");
+  const f_datum = document.getElementById("f_datum");
+  const f_lieferant = document.getElementById("f_lieferant");
+  const f_rechnungsnummer = document.getElementById("f_rechnungsnummer");
+  const f_netto = document.getElementById("f_netto");
+  const f_mwst_satz = document.getElementById("f_mwst_satz");
+  const f_mwst_betrag = document.getElementById("f_mwst_betrag");
+  const f_gesamt = document.getElementById("f_gesamt");
+  const f_waehrung = document.getElementById("f_waehrung");
+  const f_kategorie = document.getElementById("f_kategorie");
+  const f_notizen = document.getElementById("f_notizen");
+  const saveStatus = document.getElementById("saveStatus");
+
+  function fillForm(fields) {
+    f_datum.value = normalizeDate(fields.datum);
+    f_lieferant.value = fields.lieferant || "";
+    f_rechnungsnummer.value = fields.rechnungsnummer || "";
+    f_netto.value = fields.nettobetrag ?? "";
+    f_mwst_satz.value = fields.mwst_satz ?? "";
+    f_mwst_betrag.value = fields.mwst_betrag ?? "";
+    f_gesamt.value = fields.gesamtbetrag ?? "";
+    f_waehrung.value = fields.waehrung || "EUR";
+    f_kategorie.value = fields.kategorie || "";
+    f_notizen.value = fields.notizen || "";
+  }
+
+  function normalizeDate(d) {
+    if (!d) return "";
+    const m = String(d).match(/(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[0] : "";
+  }
+
+  document.getElementById("discardBtn").addEventListener("click", () => {
+    formPanel.classList.add("hidden");
+    resetImage();
+  });
+
+  // ---------- Speichern & Archivieren ----------
+  const saveInvoiceBtn = document.getElementById("saveInvoiceBtn");
+  saveInvoiceBtn.addEventListener("click", saveInvoice);
+
+  function sanitizeForFilename(str) {
+    return (str || "unbekannt")
+      .normalize("NFKD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-zA-Z0-9_\- ]/g, "")
+      .trim().replace(/\s+/g, "_")
+      .slice(0, 60) || "unbekannt";
+  }
+
+  function dataUrlToBlob(dataUrl) {
+    const [head, b64] = dataUrl.split(",");
+    const mime = head.match(/data:(.*?);base64/)[1];
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+
+  function extFromMime(mime) {
+    if (mime.includes("png")) return "png";
+    if (mime.includes("webp")) return "webp";
+    if (mime.includes("heic")) return "heic";
+    return "jpg";
+  }
+
+  async function saveInvoice() {
+    if (!currentDataUrl) return;
+    saveInvoiceBtn.disabled = true;
+    saveStatus.innerHTML = '<span class="spinner"></span>Speichere...';
+    saveStatus.className = "status info";
+
+    try {
+      const datum = f_datum.value || "unbekannt-datum";
+      const lieferant = f_lieferant.value || "unbekannt";
+      const mime = currentDataUrl.match(/data:(.*?);base64/)[1];
+      const ext = extFromMime(mime);
+      let archiveFilename = `${sanitizeForFilename(datum)}_${sanitizeForFilename(lieferant)}.${ext}`;
+
+      // Eindeutigkeit gegen vorhandene Einträge sicherstellen
+      const existingNames = new Set(invoices.map(i => i.archiveFilename));
+      let unique = archiveFilename;
+      let n = 2;
+      while (existingNames.has(unique)) {
+        unique = `${sanitizeForFilename(datum)}_${sanitizeForFilename(lieferant)}_${n}.${ext}`;
+        n++;
+      }
+      archiveFilename = unique;
+
+      const blob = dataUrlToBlob(currentDataUrl);
+
+      let archivedVia = "download";
+      if (dirHandle) {
+        try {
+          await writeFileToDir(archiveFilename, blob);
+          archivedVia = "ordner";
+        } catch (e) {
+          console.warn("Schreiben in Ordner fehlgeschlagen, weiche auf Download aus:", e);
+          downloadBlob(archiveFilename, blob);
+        }
+      } else {
+        downloadBlob(archiveFilename, blob);
+      }
+
+      const invoice = {
+        id: Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+        datum: f_datum.value,
+        lieferant: f_lieferant.value,
+        rechnungsnummer: f_rechnungsnummer.value,
+        nettobetrag: parseNum(f_netto.value),
+        mwst_satz: parseNum(f_mwst_satz.value),
+        mwst_betrag: parseNum(f_mwst_betrag.value),
+        gesamtbetrag: parseNum(f_gesamt.value),
+        waehrung: f_waehrung.value || "EUR",
+        kategorie: f_kategorie.value,
+        notizen: f_notizen.value,
+        archiveFilename,
+        erfasstAm: new Date().toISOString()
+      };
+
+      invoices.push(invoice);
+      persistInvoices();
+      renderTable();
+
+      if (dirHandle) {
+        await exportExcel(true);
+      }
+
+      saveStatus.textContent = archivedVia === "ordner"
+        ? `Gespeichert. Foto als "${archiveFilename}" im Archivordner abgelegt, Excel-Datei aktualisiert.`
+        : `Gespeichert. Foto als "${archiveFilename}" heruntergeladen. Nutze "Excel exportieren", um die Tabelle zu speichern.`;
+      saveStatus.className = "status ok";
+
+      formPanel.classList.add("hidden");
+      resetImage();
+    } catch (err) {
+      console.error(err);
+      saveStatus.textContent = "Fehler beim Speichern: " + err.message;
+      saveStatus.className = "status err";
+    } finally {
+      saveInvoiceBtn.disabled = false;
+    }
+  }
+
+  function parseNum(v) {
+    if (v === "" || v === null || v === undefined) return null;
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+
+  // ---------- Persistenz & Tabelle ----------
+  let invoices = [];
+  try {
+    invoices = JSON.parse(localStorage.getItem(LS_KEY_INVOICES) || "[]");
+  } catch (e) {
+    invoices = [];
+  }
+
+  function persistInvoices() {
+    localStorage.setItem(LS_KEY_INVOICES, JSON.stringify(invoices));
+  }
+
+  const invoiceTbody = document.getElementById("invoiceTbody");
+  const countBadge = document.getElementById("countBadge");
+
+  function fmt(n) {
+    return (n === null || n === undefined || n === "") ? "" : Number(n).toFixed(2);
+  }
+
+  function renderTable() {
+    invoiceTbody.innerHTML = "";
+    invoices.forEach((inv) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(inv.datum || "")}</td>
+        <td>${escapeHtml(inv.lieferant || "")}</td>
+        <td>${escapeHtml(inv.rechnungsnummer || "")}</td>
+        <td>${fmt(inv.nettobetrag)}</td>
+        <td>${fmt(inv.mwst_satz)}</td>
+        <td>${fmt(inv.mwst_betrag)}</td>
+        <td>${fmt(inv.gesamtbetrag)}</td>
+        <td>${escapeHtml(inv.waehrung || "")}</td>
+        <td>${escapeHtml(inv.kategorie || "")}</td>
+        <td>${escapeHtml(inv.archiveFilename || "")}</td>
+        <td><button class="secondary" data-id="${inv.id}" style="padding:4px 8px;">Löschen</button></td>
+      `;
+      invoiceTbody.appendChild(tr);
+    });
+    countBadge.textContent = `${invoices.length} Rechnung${invoices.length === 1 ? "" : "en"}`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  invoiceTbody.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-id]");
+    if (!btn) return;
+    const id = btn.getAttribute("data-id");
+    invoices = invoices.filter(i => i.id !== id);
+    persistInvoices();
+    renderTable();
+  });
+
+  document.getElementById("clearAllBtn").addEventListener("click", () => {
+    if (invoices.length === 0) return;
+    if (!confirm("Wirklich alle erfassten Rechnungen aus der Liste löschen? Bereits archivierte Fotos/Excel-Dateien bleiben davon unberührt.")) return;
+    invoices = [];
+    persistInvoices();
+    renderTable();
+  });
+
+  // ---------- Excel-Export ----------
+  const exportBtn = document.getElementById("exportBtn");
+  const exportStatus = document.getElementById("exportStatus");
+  exportBtn.addEventListener("click", () => exportExcel(false));
+
+  async function exportExcel(silent) {
+    const headers = ["Datum", "Lieferant", "Rechnungsnummer", "Nettobetrag", "MwSt-Satz (%)", "MwSt-Betrag", "Gesamtbetrag", "Währung", "Kategorie", "Notizen", "Archivdatei", "Erfasst am"];
+    const rows = invoices.map(i => [
+      i.datum || "", i.lieferant || "", i.rechnungsnummer || "",
+      i.nettobetrag, i.mwst_satz, i.mwst_betrag, i.gesamtbetrag,
+      i.waehrung || "", i.kategorie || "", i.notizen || "",
+      i.archiveFilename || "", i.erfasstAm || ""
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws["!cols"] = [
+      { wch: 12 }, { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 12 },
+      { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 24 }, { wch: 28 }, { wch: 20 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Rechnungen");
+
+    if (dirHandle) {
+      try {
+        const arrBuf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+        await writeFileToDir("rechnungen.xlsx", new Blob([arrBuf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        if (!silent) {
+          exportStatus.textContent = 'Excel-Datei "rechnungen.xlsx" im Archivordner aktualisiert.';
+          exportStatus.className = "status ok";
+        }
+        return;
+      } catch (e) {
+        console.warn("Schreiben in Ordner fehlgeschlagen, weiche auf Download aus:", e);
+      }
+    }
+
+    XLSX.writeFile(wb, "rechnungen.xlsx");
+    if (!silent) {
+      exportStatus.textContent = 'Excel-Datei "rechnungen.xlsx" heruntergeladen.';
+      exportStatus.className = "status ok";
+    }
+  }
+
+  // ---------- Initial render ----------
+  renderTable();
+})();
+</script>
+
+</body>
+</html>
