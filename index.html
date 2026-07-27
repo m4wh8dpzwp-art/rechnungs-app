@@ -2,312 +2,574 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rechnungs-Archiv</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16181c" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Rechnungen">
+<title>Rechnungen</title>
 <script src="lib/xlsx.full.min.js"></script>
 <style>
   :root {
-    --bg: #f5f6f8;
-    --panel: #ffffff;
-    --border: #e0e2e7;
-    --text: #1c1e21;
-    --muted: #6b7280;
-    --accent: #b5651d;
-    --accent-hover: #96521a;
+    --bg: #f7f7f5;
+    --surface: #ffffff;
+    --surface-2: #f1f1ee;
+    --border: #e3e3de;
+    --border-strong: #d2d2cb;
+    --text: #1a1c1e;
+    --text-dim: #6c7075;
+    --accent: #2f6f4e;
+    --accent-soft: #e8f2ec;
+    --accent-text: #ffffff;
     --danger: #b3261e;
-    --ok: #2e7d32;
-    --radius: 10px;
+    --danger-soft: #fdecea;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.05);
   }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --surface: #1e2126;
+      --surface-2: #252930;
+      --border: #30353c;
+      --border-strong: #414852;
+      --text: #eceef1;
+      --text-dim: #9aa1aa;
+      --accent: #57a97b;
+      --accent-soft: #1f3229;
+      --accent-text: #0f1512;
+      --danger: #f2837b;
+      --danger-soft: #35211f;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0;
-    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
-    line-height: 1.4;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
   }
-  header {
-    padding: 20px 24px;
-    background: var(--panel);
+
+  /* ---------- App bar ---------- */
+  .appbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
     border-bottom: 1px solid var(--border);
   }
-  header h1 { margin: 0; font-size: 1.4rem; }
-  header p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+  .appbar h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .icon-btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    cursor: pointer;
+    position: relative;
+    flex: 0 0 auto;
+    transition: background .15s, border-color .15s;
+  }
+  .icon-btn:hover { background: var(--surface-2); }
+  .icon-btn svg { width: 20px; height: 20px; display: block; }
+  .icon-btn .dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--danger);
+    border: 2px solid var(--bg);
+  }
+
   main {
-    max-width: 1000px;
+    max-width: 680px;
     margin: 0 auto;
-    padding: 20px 16px 60px;
+    padding: 16px 16px calc(env(safe-area-inset-bottom) + 40px);
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
   }
-  .panel {
-    background: var(--panel);
+
+  .card {
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 18px 20px;
+    padding: 16px;
   }
-  .panel h2 {
+  .card-title {
     margin: 0 0 12px;
-    font-size: 1.05rem;
+    font-size: .8rem;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-dim);
   }
-  .row {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; }
-  input[type=text], input[type=password], input[type=date], input[type=number], select, textarea {
-    padding: 8px 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 0.95rem;
-    width: 100%;
-    background: #fff;
-    color: var(--text);
-  }
-  .field { flex: 1 1 180px; min-width: 140px; }
-  button {
-    cursor: pointer;
-    border: none;
-    border-radius: 6px;
-    padding: 9px 16px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    background: var(--accent);
-    color: #fff;
-    transition: background .15s;
-  }
-  button:hover { background: var(--accent-hover); }
-  button.secondary {
-    background: #fff;
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-  button.secondary:hover { background: #f0f0f0; }
-  button.danger { background: var(--danger); }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ---------- Capture ---------- */
   .dropzone {
-    border: 2px dashed var(--border);
+    border: 1.5px dashed var(--border-strong);
     border-radius: var(--radius);
-    padding: 30px;
+    background: var(--surface);
+    padding: 32px 20px;
     text-align: center;
-    color: var(--muted);
-    cursor: pointer;
+    color: var(--text-dim);
     transition: border-color .15s, background .15s;
   }
-  .dropzone.drag { border-color: var(--accent); background: #fdf6ee; }
-  .dropzone img { max-width: 100%; max-height: 320px; border-radius: 6px; margin-top: 10px; }
-  .status { font-size: 0.85rem; margin-top: 8px; }
-  .status.ok { color: var(--ok); }
-  .status.err { color: var(--danger); }
-  .status.info { color: var(--muted); }
-  .hidden { display: none !important; }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
+  .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
+  .dropzone .zone-icon {
+    width: 44px; height: 44px;
+    margin: 0 auto 12px;
+    color: var(--text-dim);
   }
-  th, td {
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--border);
-    text-align: left;
+  .dropzone .zone-title { color: var(--text); font-weight: 600; margin-bottom: 4px; }
+  .dropzone .zone-hint { font-size: .85rem; }
+
+  .preview-wrap { position: relative; }
+  .preview-wrap img {
+    width: 100%;
+    max-height: 46vh;
+    object-fit: contain;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    display: block;
+  }
+  .preview-remove {
+    position: absolute; top: 8px; right: 8px;
+    width: 32px; height: 32px; border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,.6);
+    color: #fff;
+    display: grid; place-items: center;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+  }
+  .preview-remove svg { width: 16px; height: 16px; }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .actions > * { flex: 1 1 140px; }
+
+  button {
+    font: inherit;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    padding: 12px 16px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: filter .15s, background .15s, border-color .15s;
     white-space: nowrap;
   }
-  th { color: var(--muted); font-weight: 600; }
-  .table-wrap { overflow-x: auto; }
+  button svg { width: 18px; height: 18px; flex: 0 0 auto; }
+  .btn-primary { background: var(--accent); color: var(--accent-text); }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+  .btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
+  .btn-ghost { background: transparent; color: var(--text-dim); border-color: transparent; padding: 8px 10px; }
+  .btn-ghost:hover { color: var(--text); background: var(--surface-2); }
+  .btn-danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+  .btn-danger:hover:not(:disabled) { background: var(--danger-soft); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ---------- Form ---------- */
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .field.wide { grid-column: 1 / -1; }
+  label {
+    display: block;
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 5px;
+  }
+  input, select, textarea {
+    width: 100%;
+    font: inherit;
+    font-size: 16px; /* verhindert Auto-Zoom in iOS Safari */
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 11px 12px;
+    appearance: none;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  select { background-image: none; }
+  textarea { resize: vertical; min-height: 60px; }
+  .field-highlight input { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); font-weight: 650; }
+
+  /* ---------- Summary ---------- */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .stat { background: var(--surface); padding: 14px 12px; text-align: center; }
+  .stat .val { font-size: 1.15rem; font-weight: 680; letter-spacing: -0.02em; white-space: nowrap; }
+  .stat .lbl { font-size: .72rem; color: var(--text-dim); margin-top: 2px; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* ---------- Invoice list ---------- */
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+  }
+  .item-main { min-width: 0; flex: 1; }
+  .item-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .item-name { font-weight: 620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-amount { font-weight: 650; white-space: nowrap; letter-spacing: -0.01em; }
+  .item-meta {
+    font-size: .8rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .item-del {
+    flex: 0 0 auto;
+    width: 32px; height: 32px; padding: 0;
+    border-radius: 50%;
+    background: transparent; border: none; color: var(--text-dim);
+    display: grid; place-items: center; cursor: pointer;
+  }
+  .item-del:hover { background: var(--danger-soft); color: var(--danger); }
+  .item-del svg { width: 16px; height: 16px; }
+
+  .empty { text-align: center; color: var(--text-dim); padding: 24px 12px; font-size: .9rem; }
+
+  /* ---------- Settings sheet ---------- */
+  .backdrop {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(0,0,0,.45);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 0;
+  }
+  @media (min-width: 640px) { .backdrop { align-items: center; padding: 24px; } }
+  .sheet {
+    background: var(--bg);
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 20px 20px 0 0;
+    padding: 8px 16px calc(env(safe-area-inset-bottom) + 24px);
+    box-shadow: var(--shadow);
+    -webkit-overflow-scrolling: touch;
+  }
+  @media (min-width: 640px) { .sheet { border-radius: 18px; padding-bottom: 24px; } }
+  .grabber { width: 38px; height: 4px; border-radius: 99px; background: var(--border-strong); margin: 8px auto 4px; }
+  @media (min-width: 640px) { .grabber { display: none; } }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0 16px;
+  }
+  .sheet-head h2 { margin: 0; font-size: 1.05rem; font-weight: 650; }
+  .setting-group { margin-bottom: 20px; }
+  .setting-group > .card-title { margin-bottom: 10px; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+  details.note { margin-top: 10px; }
+  details.note summary { cursor: pointer; font-size: .85rem; color: var(--text-dim); }
+  details.note p { font-size: .85rem; color: var(--text-dim); margin: 8px 0 0; }
+
+  .status { font-size: .85rem; margin-top: 10px; color: var(--text-dim); }
+  .status.ok { color: var(--accent); }
+  .status.err { color: var(--danger); }
+
   .spinner {
-    display: inline-block;
-    width: 16px; height: 16px;
-    border: 2px solid rgba(0,0,0,0.15);
-    border-top-color: var(--accent);
+    width: 15px; height: 15px;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
     border-radius: 50%;
     animation: spin .7s linear infinite;
-    vertical-align: -3px;
-    margin-right: 6px;
+    display: inline-block; vertical-align: -2px; margin-right: 7px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  details summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
-  .badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: #eef2ff;
-    color: #3730a3;
-    font-size: 0.75rem;
-  }
-  .footer-note {
-    color: var(--muted);
-    font-size: 0.8rem;
+
+  /* ---------- Toast ---------- */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom) + 20px);
+    transform: translate(-50%, 140%);
+    z-index: 80;
+    max-width: min(90vw, 460px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 12px 18px;
+    border-radius: 99px;
+    font-size: .88rem;
+    font-weight: 550;
+    box-shadow: var(--shadow);
+    transition: transform .28s cubic-bezier(.2,.9,.3,1.2);
     text-align: center;
-    margin-top: 10px;
   }
-  a { color: var(--accent); }
+  #toast.show { transform: translate(-50%, 0); }
+
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>Rechnungs-Archiv</h1>
-  <p>Foto hochladen &rarr; per Claude auslesen &rarr; in Excel erfassen &rarr; Original archivieren.</p>
+<header class="appbar">
+  <h1>Rechnungen</h1>
+  <button class="icon-btn" id="openSettings" aria-label="Einstellungen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+    <span class="dot hidden" id="settingsDot"></span>
+  </button>
 </header>
 
 <main>
 
-  <!-- Konfiguration -->
-  <section class="panel">
-    <h2>Einstellungen</h2>
-    <div class="row">
-      <div class="field" style="flex-basis: 320px;">
-        <label for="apiKey">Claude API-Key</label>
-        <input type="password" id="apiKey" placeholder="sk-ant-...">
-      </div>
-      <div class="field" style="flex-basis: 220px;">
-        <label for="model">Modell</label>
-        <select id="model">
-          <option value="claude-sonnet-5">claude-sonnet-5 (empfohlen)</option>
-          <option value="claude-opus-5">claude-opus-5</option>
-          <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (schnell/günstig)</option>
-        </select>
-      </div>
-      <div class="field" style="flex: 0 0 auto; align-self: flex-end;">
-        <button id="saveKeyBtn" class="secondary">Key lokal speichern</button>
-      </div>
-    </div>
-    <div id="keyStatus" class="status info"></div>
-    <details style="margin-top:10px;">
-      <summary>Hinweise zu API-Key &amp; Datenschutz</summary>
-      <p style="font-size:0.85rem; color:var(--muted);">
-        Der Key wird nur in deinem Browser (localStorage) gespeichert und ausschließlich direkt an
-        <code>api.anthropic.com</code> gesendet &mdash; es gibt keinen Zwischenserver. Diese App läuft komplett
-        client-seitig; das bedeutet der Key ist im Browser sichtbar (z.B. über die Entwicklertools).
-        Nutze ihn daher nur auf deinem eigenen, vertrauenswürdigen Gerät und nicht auf einem geteilten Rechner.
-        Rechnungsfotos werden zur Auswertung an die Claude-API übertragen.
-      </p>
-    </details>
-
-    <div class="row" style="margin-top:14px;">
-      <button id="pickFolderBtn" class="secondary">Archivordner wählen</button>
-      <span id="folderStatus" class="status info">Kein Ordner gewählt &mdash; Dateien werden stattdessen einzeln heruntergeladen.</span>
-    </div>
-  </section>
-
-  <!-- Upload -->
-  <section class="panel">
-    <h2>1. Rechnung hochladen</h2>
+  <!-- Aufnahme -->
+  <section>
     <div id="dropzone" class="dropzone">
-      <div id="dropzoneText">
-        📄 Bild hierher ziehen, klicken zum Auswählen, oder direkt fotografieren (mobil)
+      <svg class="zone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/>
+        <circle cx="12" cy="13" r="3.5"/>
+      </svg>
+      <div class="zone-title">Rechnung erfassen</div>
+      <div class="zone-hint">Foto aufnehmen oder Bild auswählen</div>
+      <div class="actions">
+        <button class="btn-primary" id="cameraBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          Kamera
+        </button>
+        <button class="btn-secondary" id="pickBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          Galerie
+        </button>
       </div>
-      <img id="preview" class="hidden">
     </div>
-    <input type="file" id="fileInput" accept="image/*" class="hidden">
-    <div class="row" style="margin-top:12px;">
-      <button id="analyzeBtn" disabled>Rechnung analysieren</button>
-      <button id="clearImageBtn" class="secondary hidden">Bild entfernen</button>
+
+    <div id="previewWrap" class="preview-wrap hidden">
+      <img id="preview" alt="Vorschau der Rechnung">
+      <button class="preview-remove" id="clearImageBtn" aria-label="Bild entfernen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      <div class="actions">
+        <button class="btn-primary" id="analyzeBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="7"/></svg>
+          Rechnung auslesen
+        </button>
+      </div>
+      <div id="analyzeStatus" class="status"></div>
     </div>
-    <div id="analyzeStatus" class="status info"></div>
+
+    <input type="file" id="fileCamera" accept="image/*" capture="environment" class="hidden">
+    <input type="file" id="filePick" accept="image/*" class="hidden">
   </section>
 
-  <!-- Extrahierte Felder -->
-  <section class="panel hidden" id="formPanel">
-    <h2>2. Erkannte Daten prüfen &amp; korrigieren</h2>
-    <div class="row">
-      <div class="field"><label for="f_datum">Rechnungsdatum</label><input type="date" id="f_datum"></div>
-      <div class="field" style="flex-basis:260px;"><label for="f_lieferant">Lieferant / Aussteller</label><input type="text" id="f_lieferant"></div>
-      <div class="field"><label for="f_rechnungsnummer">Rechnungsnummer</label><input type="text" id="f_rechnungsnummer"></div>
+  <!-- Prüfen -->
+  <section class="card hidden" id="formPanel">
+    <h2 class="card-title">Daten prüfen</h2>
+    <div class="field-grid">
+      <div class="field"><label for="f_datum">Datum</label><input type="date" id="f_datum"></div>
+      <div class="field"><label for="f_rechnungsnummer">Rechnungsnr.</label><input type="text" id="f_rechnungsnummer" placeholder="—"></div>
+      <div class="field wide"><label for="f_lieferant">Lieferant</label><input type="text" id="f_lieferant" placeholder="—"></div>
+      <div class="field field-highlight"><label for="f_gesamt">Gesamt (brutto)</label><input type="number" inputmode="decimal" step="0.01" id="f_gesamt" placeholder="0,00"></div>
+      <div class="field field-highlight"><label for="f_mwst_betrag">MwSt-Betrag</label><input type="number" inputmode="decimal" step="0.01" id="f_mwst_betrag" placeholder="0,00"></div>
+      <div class="field"><label for="f_netto">Netto</label><input type="number" inputmode="decimal" step="0.01" id="f_netto" placeholder="0,00"></div>
+      <div class="field"><label for="f_mwst_satz">MwSt-Satz %</label><input type="number" inputmode="decimal" step="0.01" id="f_mwst_satz" placeholder="19"></div>
+      <div class="field"><label for="f_waehrung">Währung</label><input type="text" id="f_waehrung" value="EUR"></div>
+      <div class="field"><label for="f_kategorie">Kategorie</label><input type="text" id="f_kategorie" placeholder="z.B. Büromaterial"></div>
+      <div class="field wide"><label for="f_notizen">Notizen</label><textarea id="f_notizen" rows="2"></textarea></div>
     </div>
-    <div class="row" style="margin-top:10px;">
-      <div class="field"><label for="f_netto">Nettobetrag</label><input type="number" step="0.01" id="f_netto"></div>
-      <div class="field"><label for="f_mwst_satz">MwSt-Satz (%)</label><input type="number" step="0.01" id="f_mwst_satz"></div>
-      <div class="field"><label for="f_mwst_betrag">MwSt-Betrag</label><input type="number" step="0.01" id="f_mwst_betrag"></div>
-      <div class="field"><label for="f_gesamt">Gesamtbetrag (Brutto)</label><input type="number" step="0.01" id="f_gesamt"></div>
-      <div class="field" style="flex-basis:100px;"><label for="f_waehrung">Währung</label><input type="text" id="f_waehrung" value="EUR"></div>
+    <div class="actions">
+      <button class="btn-primary" id="saveInvoiceBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        Speichern
+      </button>
+      <button class="btn-secondary" id="discardBtn">Verwerfen</button>
     </div>
-    <div class="row" style="margin-top:10px;">
-      <div class="field"><label for="f_kategorie">Kategorie</label><input type="text" id="f_kategorie" placeholder="z.B. Büromaterial, Reise, Software..."></div>
-      <div class="field" style="flex-basis:100%;"><label for="f_notizen">Notizen</label><textarea id="f_notizen" rows="2"></textarea></div>
-    </div>
-    <div class="row" style="margin-top:14px;">
-      <button id="saveInvoiceBtn">Speichern &amp; archivieren</button>
-      <button id="discardBtn" class="secondary">Verwerfen</button>
-    </div>
-    <div id="saveStatus" class="status info"></div>
+    <div id="saveStatus" class="status"></div>
   </section>
 
-  <!-- Archiv-Tabelle -->
-  <section class="panel">
-    <h2>3. Archiv <span id="countBadge" class="badge">0 Rechnungen</span></h2>
-    <div class="table-wrap">
-      <table id="invoiceTable">
-        <thead>
-          <tr>
-            <th>Datum</th><th>Lieferant</th><th>Rechnungsnr.</th><th>Netto</th>
-            <th>MwSt %</th><th>MwSt-Betrag</th><th>Gesamt</th><th>Währung</th>
-            <th>Kategorie</th><th>Archivdatei</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="invoiceTbody"></tbody>
-      </table>
+  <!-- Übersicht -->
+  <section>
+    <div class="summary">
+      <div class="stat"><div class="val" id="statCount">0</div><div class="lbl">Belege</div></div>
+      <div class="stat"><div class="val" id="statTotal">0 €</div><div class="lbl">Gesamt</div></div>
+      <div class="stat"><div class="val" id="statVat">0 €</div><div class="lbl">MwSt</div></div>
     </div>
-    <div class="row" style="margin-top:14px;">
-      <button id="exportBtn" class="secondary">Excel exportieren (.xlsx)</button>
-      <button id="clearAllBtn" class="danger">Alle Einträge löschen</button>
+    <div class="list" id="invoiceList" style="margin-top:12px"></div>
+    <div class="actions" id="archiveActions">
+      <button class="btn-secondary" id="exportBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+        Excel exportieren
+      </button>
     </div>
-    <div id="exportStatus" class="status info"></div>
+    <div id="exportStatus" class="status"></div>
   </section>
-
-  <p class="footer-note">Alle Daten bleiben lokal in deinem Browser (localStorage), bis du sie exportierst oder in deinen Archivordner schreibst.</p>
 
 </main>
+
+<!-- Einstellungen -->
+<div class="backdrop hidden" id="settingsBackdrop">
+  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <h2 id="settingsTitle">Einstellungen</h2>
+      <button class="btn-ghost" id="closeSettings">Fertig</button>
+    </div>
+
+    <div class="setting-group">
+      <h3 class="card-title">Claude API</h3>
+      <div class="card stack">
+        <div>
+          <label for="apiKey">API-Key</label>
+          <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div>
+          <label for="model">Modell</label>
+          <select id="model">
+            <option value="claude-sonnet-5">Sonnet 5 — empfohlen</option>
+            <option value="claude-opus-5">Opus 5 — höchste Genauigkeit</option>
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5 — schnell &amp; günstig</option>
+          </select>
+        </div>
+        <button class="btn-primary" id="saveKeyBtn">Speichern</button>
+        <div id="keyStatus" class="status"></div>
+        <details class="note">
+          <summary>Datenschutz-Hinweis</summary>
+          <p>Der Key wird ausschließlich in diesem Browser (localStorage) gespeichert und direkt an
+          <code>api.anthropic.com</code> gesendet — es gibt keinen Zwischenserver. Da die App komplett
+          client-seitig läuft, ist der Key im Browser einsehbar; nutze sie daher nur auf deinen eigenen
+          Geräten. Rechnungsfotos werden zur Auswertung an die Claude-API übertragen.</p>
+        </details>
+      </div>
+    </div>
+
+    <div class="setting-group" id="folderGroup">
+      <h3 class="card-title">Archivordner</h3>
+      <div class="card stack">
+        <button class="btn-secondary" id="pickFolderBtn">Ordner wählen</button>
+        <div id="folderStatus" class="status">Kein Ordner verbunden — Fotos und Excel-Datei werden stattdessen heruntergeladen.</div>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <h3 class="card-title">Daten</h3>
+      <div class="card stack">
+        <button class="btn-danger" id="clearAllBtn">Alle Einträge löschen</button>
+        <div class="status">Löscht nur die Liste in diesem Browser. Bereits gespeicherte Fotos und Excel-Dateien bleiben erhalten.</div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div id="toast"></div>
 
 <script>
 (function () {
   "use strict";
 
-  // ---------- Persistente Konfiguration ----------
   const LS_KEY_API = "rechnungsapp_apikey";
   const LS_KEY_MODEL = "rechnungsapp_model";
   const LS_KEY_INVOICES = "rechnungsapp_invoices";
 
-  const apiKeyInput = document.getElementById("apiKey");
-  const modelSelect = document.getElementById("model");
-  const saveKeyBtn = document.getElementById("saveKeyBtn");
-  const keyStatus = document.getElementById("keyStatus");
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Toast ----------
+  const toastEl = $("toast");
+  let toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 3200);
+  }
+
+  const fmtMoney = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+  const fmtMoneyShort = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+
+  // ---------- Einstellungen ----------
+  const apiKeyInput = $("apiKey");
+  const modelSelect = $("model");
+  const keyStatus = $("keyStatus");
+  const settingsDot = $("settingsDot");
+  const backdrop = $("settingsBackdrop");
 
   apiKeyInput.value = localStorage.getItem(LS_KEY_API) || "";
   modelSelect.value = localStorage.getItem(LS_KEY_MODEL) || "claude-sonnet-5";
-  if (apiKeyInput.value) {
-    keyStatus.textContent = "Gespeicherter Key geladen.";
-    keyStatus.className = "status ok";
-  }
 
-  saveKeyBtn.addEventListener("click", () => {
+  function refreshKeyIndicator() {
+    const hasKey = !!apiKeyInput.value.trim();
+    settingsDot.classList.toggle("hidden", hasKey);
+  }
+  refreshKeyIndicator();
+
+  function openSettings() { backdrop.classList.remove("hidden"); }
+  function closeSettings() { backdrop.classList.add("hidden"); }
+
+  $("openSettings").addEventListener("click", openSettings);
+  $("closeSettings").addEventListener("click", closeSettings);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeSettings(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
+
+  $("saveKeyBtn").addEventListener("click", () => {
     localStorage.setItem(LS_KEY_API, apiKeyInput.value.trim());
     localStorage.setItem(LS_KEY_MODEL, modelSelect.value);
     keyStatus.textContent = "Gespeichert.";
     keyStatus.className = "status ok";
+    refreshKeyIndicator();
+    toast("Einstellungen gespeichert");
+    closeSettings();
   });
-  modelSelect.addEventListener("change", () => {
-    localStorage.setItem(LS_KEY_MODEL, modelSelect.value);
-  });
+  modelSelect.addEventListener("change", () => localStorage.setItem(LS_KEY_MODEL, modelSelect.value));
 
-  // ---------- Archivordner (File System Access API, optional) ----------
+  // Beim ersten Start ohne Key direkt die Einstellungen zeigen
+  if (!apiKeyInput.value) openSettings();
+
+  // ---------- Archivordner (File System Access API) ----------
   let dirHandle = null;
-  const pickFolderBtn = document.getElementById("pickFolderBtn");
-  const folderStatus = document.getElementById("folderStatus");
-  const supportsFS = "showDirectoryPicker" in window;
+  const pickFolderBtn = $("pickFolderBtn");
+  const folderStatus = $("folderStatus");
 
-  if (!supportsFS) {
-    pickFolderBtn.disabled = true;
-    folderStatus.textContent = "Dieser Browser unterstützt keine direkte Ordner-Anbindung (funktioniert z.B. in Chrome/Edge). Dateien werden stattdessen einzeln heruntergeladen.";
+  if (!("showDirectoryPicker" in window)) {
+    $("folderGroup").classList.add("hidden");
   }
 
   pickFolderBtn.addEventListener("click", async () => {
     try {
       dirHandle = await window.showDirectoryPicker();
-      folderStatus.textContent = `Archivordner verbunden: "${dirHandle.name}". Fotos & Excel-Datei werden dort automatisch abgelegt.`;
+      folderStatus.textContent = `Verbunden: „${dirHandle.name}“. Fotos und rechnungen.xlsx werden dort automatisch abgelegt.`;
       folderStatus.className = "status ok";
     } catch (e) {
       if (e.name !== "AbortError") {
@@ -318,12 +580,10 @@
   });
 
   async function writeFileToDir(filename, blob) {
-    if (!dirHandle) return false;
     const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(blob);
     await writable.close();
-    return true;
   }
 
   function downloadBlob(filename, blob) {
@@ -337,128 +597,101 @@
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
-  // ---------- Upload / Bildauswahl ----------
-  const dropzone = document.getElementById("dropzone");
-  const dropzoneText = document.getElementById("dropzoneText");
-  const fileInput = document.getElementById("fileInput");
-  const preview = document.getElementById("preview");
-  const analyzeBtn = document.getElementById("analyzeBtn");
-  const clearImageBtn = document.getElementById("clearImageBtn");
-  const analyzeStatus = document.getElementById("analyzeStatus");
+  // ---------- Bildaufnahme ----------
+  const dropzone = $("dropzone");
+  const previewWrap = $("previewWrap");
+  const preview = $("preview");
+  const fileCamera = $("fileCamera");
+  const filePick = $("filePick");
+  const analyzeBtn = $("analyzeBtn");
+  const analyzeStatus = $("analyzeStatus");
+  const formPanel = $("formPanel");
 
-  let currentFile = null;   // File
-  let currentDataUrl = null; // "data:image/...;base64,...."
+  let currentDataUrl = null;
 
-  dropzone.addEventListener("click", () => fileInput.click());
+  $("cameraBtn").addEventListener("click", (e) => { e.stopPropagation(); fileCamera.click(); });
+  $("pickBtn").addEventListener("click", (e) => { e.stopPropagation(); filePick.click(); });
+  fileCamera.addEventListener("change", () => { if (fileCamera.files[0]) handleFile(fileCamera.files[0]); });
+  filePick.addEventListener("change", () => { if (filePick.files[0]) handleFile(filePick.files[0]); });
+
   dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag"); });
   dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
   dropzone.addEventListener("drop", (e) => {
     e.preventDefault();
     dropzone.classList.remove("drag");
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
-    }
-  });
-  fileInput.addEventListener("change", () => {
-    if (fileInput.files[0]) handleFile(fileInput.files[0]);
-  });
-  clearImageBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    resetImage();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
   });
 
+  $("clearImageBtn").addEventListener("click", resetImage);
+
   function resetImage() {
-    currentFile = null;
     currentDataUrl = null;
-    preview.classList.add("hidden");
     preview.src = "";
-    dropzoneText.classList.remove("hidden");
-    clearImageBtn.classList.add("hidden");
-    analyzeBtn.disabled = true;
-    fileInput.value = "";
-    analyzeStatus.textContent = "";
+    previewWrap.classList.add("hidden");
+    dropzone.classList.remove("hidden");
     formPanel.classList.add("hidden");
+    analyzeStatus.textContent = "";
+    fileCamera.value = "";
+    filePick.value = "";
   }
 
   function handleFile(file) {
     if (!file.type.startsWith("image/")) {
-      analyzeStatus.textContent = "Bitte eine Bilddatei auswählen.";
-      analyzeStatus.className = "status err";
+      toast("Bitte eine Bilddatei auswählen");
       return;
     }
-    currentFile = file;
     const reader = new FileReader();
     reader.onload = () => {
       currentDataUrl = reader.result;
       preview.src = currentDataUrl;
-      preview.classList.remove("hidden");
-      dropzoneText.classList.add("hidden");
-      clearImageBtn.classList.remove("hidden");
-      analyzeBtn.disabled = false;
-      analyzeStatus.textContent = "";
+      previewWrap.classList.remove("hidden");
+      dropzone.classList.add("hidden");
       formPanel.classList.add("hidden");
+      analyzeStatus.textContent = "";
     };
     reader.readAsDataURL(file);
   }
 
-  // ---------- Claude Vision Auswertung ----------
+  // ---------- Claude Vision ----------
   const EXTRACT_TOOL = {
     name: "extract_invoice",
     description: "Extrahiert strukturierte Rechnungsdaten aus einem Rechnungsfoto.",
     input_schema: {
       type: "object",
       properties: {
-        datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD. Falls unklar, bestmöglich schätzen." },
+        datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD." },
         lieferant: { type: "string", description: "Name des Rechnungsstellers / Lieferanten / Geschäfts." },
-        rechnungsnummer: { type: "string", description: "Rechnungs- oder Belegnummer, falls vorhanden, sonst leer lassen." },
+        rechnungsnummer: { type: "string", description: "Rechnungs- oder Belegnummer, falls vorhanden." },
         nettobetrag: { type: "number", description: "Nettobetrag ohne MwSt, falls erkennbar." },
         mwst_satz: { type: "number", description: "Mehrwertsteuersatz in Prozent, z.B. 19 oder 7." },
         mwst_betrag: { type: "number", description: "Mehrwertsteuerbetrag in Währungseinheiten." },
         gesamtbetrag: { type: "number", description: "Gesamtbetrag / Bruttobetrag der Rechnung." },
         waehrung: { type: "string", description: "Währungscode, z.B. EUR, CHF, USD." },
-        kategorie: { type: "string", description: "Grobe Ausgabenkategorie, bestmöglich geschätzt (z.B. Büromaterial, Reise, Software, Bewirtung)." },
-        notizen: { type: "string", description: "Sonstige relevante Hinweise, z.B. Unsicherheiten bei der Erkennung." }
+        kategorie: { type: "string", description: "Grobe Ausgabenkategorie (z.B. Büromaterial, Reise, Software, Bewirtung)." },
+        notizen: { type: "string", description: "Sonstige Hinweise, z.B. Unsicherheiten bei der Erkennung." }
       },
       required: ["datum", "lieferant", "rechnungsnummer", "gesamtbetrag", "mwst_betrag", "waehrung"]
     }
   };
 
-  const analyzeBtnEl = analyzeBtn;
-  analyzeBtnEl.addEventListener("click", analyzeInvoice);
+  analyzeBtn.addEventListener("click", analyzeInvoice);
 
   async function analyzeInvoice() {
-    const apiKey = apiKeyInput.value.trim();
+    const apiKey = (localStorage.getItem(LS_KEY_API) || apiKeyInput.value).trim();
     if (!apiKey) {
-      analyzeStatus.textContent = "Bitte zuerst einen API-Key eingeben und speichern.";
-      analyzeStatus.className = "status err";
+      toast("Bitte zuerst den API-Key hinterlegen");
+      openSettings();
       return;
     }
     if (!currentDataUrl) return;
 
-    analyzeBtnEl.disabled = true;
-    analyzeStatus.innerHTML = '<span class="spinner"></span>Rechnung wird analysiert...';
-    analyzeStatus.className = "status info";
+    analyzeBtn.disabled = true;
+    analyzeStatus.innerHTML = '<span class="spinner"></span>Rechnung wird ausgelesen…';
+    analyzeStatus.className = "status";
 
     try {
-      const commaIdx = currentDataUrl.indexOf(",");
-      const meta = currentDataUrl.substring(5, currentDataUrl.indexOf(";"));
-      const base64Data = currentDataUrl.substring(commaIdx + 1);
-
-      const body = {
-        model: modelSelect.value,
-        max_tokens: 1024,
-        tools: [EXTRACT_TOOL],
-        tool_choice: { type: "tool", name: "extract_invoice" },
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: meta, data: base64Data } },
-              { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol." }
-            ]
-          }
-        ]
-      };
+      const mediaType = currentDataUrl.substring(5, currentDataUrl.indexOf(";"));
+      const base64Data = currentDataUrl.substring(currentDataUrl.indexOf(",") + 1);
 
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -468,59 +701,69 @@
           "anthropic-version": "2023-06-01",
           "anthropic-dangerous-direct-browser-access": "true"
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          model: modelSelect.value,
+          max_tokens: 1024,
+          tools: [EXTRACT_TOOL],
+          tool_choice: { type: "tool", name: "extract_invoice" },
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
+              { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol." }
+            ]
+          }]
+        })
       });
 
       if (!resp.ok) {
         const errText = await resp.text();
-        throw new Error(`API-Fehler ${resp.status}: ${errText.slice(0, 300)}`);
+        throw new Error(`API ${resp.status}: ${errText.slice(0, 200)}`);
       }
 
       const data = await resp.json();
-      const toolBlock = (data.content || []).find(b => b.type === "tool_use");
-      if (!toolBlock) {
-        throw new Error("Keine strukturierten Daten in der Antwort gefunden.");
-      }
+      const toolBlock = (data.content || []).find((b) => b.type === "tool_use");
+      if (!toolBlock) throw new Error("Keine strukturierten Daten in der Antwort gefunden.");
 
       fillForm(toolBlock.input || {});
-      analyzeStatus.textContent = "Erkennung abgeschlossen. Bitte Daten prüfen.";
-      analyzeStatus.className = "status ok";
+      analyzeStatus.textContent = "";
       formPanel.classList.remove("hidden");
       formPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      toast("Daten erkannt — bitte prüfen");
     } catch (err) {
       console.error(err);
       analyzeStatus.textContent = "Fehler: " + err.message;
       analyzeStatus.className = "status err";
     } finally {
-      analyzeBtnEl.disabled = false;
+      analyzeBtn.disabled = false;
     }
   }
 
   // ---------- Formular ----------
-  const formPanel = document.getElementById("formPanel");
-  const f_datum = document.getElementById("f_datum");
-  const f_lieferant = document.getElementById("f_lieferant");
-  const f_rechnungsnummer = document.getElementById("f_rechnungsnummer");
-  const f_netto = document.getElementById("f_netto");
-  const f_mwst_satz = document.getElementById("f_mwst_satz");
-  const f_mwst_betrag = document.getElementById("f_mwst_betrag");
-  const f_gesamt = document.getElementById("f_gesamt");
-  const f_waehrung = document.getElementById("f_waehrung");
-  const f_kategorie = document.getElementById("f_kategorie");
-  const f_notizen = document.getElementById("f_notizen");
-  const saveStatus = document.getElementById("saveStatus");
+  const f = {
+    datum: $("f_datum"),
+    lieferant: $("f_lieferant"),
+    rechnungsnummer: $("f_rechnungsnummer"),
+    netto: $("f_netto"),
+    mwst_satz: $("f_mwst_satz"),
+    mwst_betrag: $("f_mwst_betrag"),
+    gesamt: $("f_gesamt"),
+    waehrung: $("f_waehrung"),
+    kategorie: $("f_kategorie"),
+    notizen: $("f_notizen")
+  };
 
-  function fillForm(fields) {
-    f_datum.value = normalizeDate(fields.datum);
-    f_lieferant.value = fields.lieferant || "";
-    f_rechnungsnummer.value = fields.rechnungsnummer || "";
-    f_netto.value = fields.nettobetrag ?? "";
-    f_mwst_satz.value = fields.mwst_satz ?? "";
-    f_mwst_betrag.value = fields.mwst_betrag ?? "";
-    f_gesamt.value = fields.gesamtbetrag ?? "";
-    f_waehrung.value = fields.waehrung || "EUR";
-    f_kategorie.value = fields.kategorie || "";
-    f_notizen.value = fields.notizen || "";
+  function fillForm(x) {
+    f.datum.value = normalizeDate(x.datum);
+    f.lieferant.value = x.lieferant || "";
+    f.rechnungsnummer.value = x.rechnungsnummer || "";
+    f.netto.value = x.nettobetrag ?? "";
+    f.mwst_satz.value = x.mwst_satz ?? "";
+    f.mwst_betrag.value = x.mwst_betrag ?? "";
+    f.gesamt.value = x.gesamtbetrag ?? "";
+    f.waehrung.value = x.waehrung || "EUR";
+    f.kategorie.value = x.kategorie || "";
+    f.notizen.value = x.notizen || "";
   }
 
   function normalizeDate(d) {
@@ -529,13 +772,11 @@
     return m ? m[0] : "";
   }
 
-  document.getElementById("discardBtn").addEventListener("click", () => {
-    formPanel.classList.add("hidden");
-    resetImage();
-  });
+  $("discardBtn").addEventListener("click", resetImage);
 
-  // ---------- Speichern & Archivieren ----------
-  const saveInvoiceBtn = document.getElementById("saveInvoiceBtn");
+  // ---------- Speichern ----------
+  const saveInvoiceBtn = $("saveInvoiceBtn");
+  const saveStatus = $("saveStatus");
   saveInvoiceBtn.addEventListener("click", saveInvoice);
 
   function sanitizeForFilename(str) {
@@ -565,71 +806,57 @@
   async function saveInvoice() {
     if (!currentDataUrl) return;
     saveInvoiceBtn.disabled = true;
-    saveStatus.innerHTML = '<span class="spinner"></span>Speichere...';
-    saveStatus.className = "status info";
+    saveStatus.innerHTML = '<span class="spinner"></span>Speichere…';
+    saveStatus.className = "status";
 
     try {
-      const datum = f_datum.value || "unbekannt-datum";
-      const lieferant = f_lieferant.value || "unbekannt";
+      const datum = f.datum.value || "unbekannt-datum";
+      const lieferant = f.lieferant.value || "unbekannt";
       const mime = currentDataUrl.match(/data:(.*?);base64/)[1];
       const ext = extFromMime(mime);
-      let archiveFilename = `${sanitizeForFilename(datum)}_${sanitizeForFilename(lieferant)}.${ext}`;
+      const base = `${sanitizeForFilename(datum)}_${sanitizeForFilename(lieferant)}`;
 
-      // Eindeutigkeit gegen vorhandene Einträge sicherstellen
-      const existingNames = new Set(invoices.map(i => i.archiveFilename));
-      let unique = archiveFilename;
+      const existing = new Set(invoices.map((i) => i.archiveFilename));
+      let archiveFilename = `${base}.${ext}`;
       let n = 2;
-      while (existingNames.has(unique)) {
-        unique = `${sanitizeForFilename(datum)}_${sanitizeForFilename(lieferant)}_${n}.${ext}`;
-        n++;
-      }
-      archiveFilename = unique;
+      while (existing.has(archiveFilename)) archiveFilename = `${base}_${n++}.${ext}`;
 
       const blob = dataUrlToBlob(currentDataUrl);
-
-      let archivedVia = "download";
+      let via = "download";
       if (dirHandle) {
         try {
           await writeFileToDir(archiveFilename, blob);
-          archivedVia = "ordner";
+          via = "ordner";
         } catch (e) {
-          console.warn("Schreiben in Ordner fehlgeschlagen, weiche auf Download aus:", e);
+          console.warn("Ordner-Schreibzugriff fehlgeschlagen:", e);
           downloadBlob(archiveFilename, blob);
         }
       } else {
         downloadBlob(archiveFilename, blob);
       }
 
-      const invoice = {
+      invoices.push({
         id: Date.now() + "_" + Math.random().toString(36).slice(2, 8),
-        datum: f_datum.value,
-        lieferant: f_lieferant.value,
-        rechnungsnummer: f_rechnungsnummer.value,
-        nettobetrag: parseNum(f_netto.value),
-        mwst_satz: parseNum(f_mwst_satz.value),
-        mwst_betrag: parseNum(f_mwst_betrag.value),
-        gesamtbetrag: parseNum(f_gesamt.value),
-        waehrung: f_waehrung.value || "EUR",
-        kategorie: f_kategorie.value,
-        notizen: f_notizen.value,
+        datum: f.datum.value,
+        lieferant: f.lieferant.value,
+        rechnungsnummer: f.rechnungsnummer.value,
+        nettobetrag: parseNum(f.netto.value),
+        mwst_satz: parseNum(f.mwst_satz.value),
+        mwst_betrag: parseNum(f.mwst_betrag.value),
+        gesamtbetrag: parseNum(f.gesamt.value),
+        waehrung: f.waehrung.value || "EUR",
+        kategorie: f.kategorie.value,
+        notizen: f.notizen.value,
         archiveFilename,
         erfasstAm: new Date().toISOString()
-      };
+      });
+      persist();
+      render();
 
-      invoices.push(invoice);
-      persistInvoices();
-      renderTable();
+      if (dirHandle) await exportExcel(true);
 
-      if (dirHandle) {
-        await exportExcel(true);
-      }
-
-      saveStatus.textContent = archivedVia === "ordner"
-        ? `Gespeichert. Foto als "${archiveFilename}" im Archivordner abgelegt, Excel-Datei aktualisiert.`
-        : `Gespeichert. Foto als "${archiveFilename}" heruntergeladen. Nutze "Excel exportieren", um die Tabelle zu speichern.`;
-      saveStatus.className = "status ok";
-
-      formPanel.classList.add("hidden");
+      saveStatus.textContent = "";
+      toast(via === "ordner" ? "Gespeichert und im Archivordner abgelegt" : "Gespeichert — Foto wurde heruntergeladen");
       resetImage();
     } catch (err) {
       console.error(err);
@@ -641,117 +868,111 @@
   }
 
   function parseNum(v) {
-    if (v === "" || v === null || v === undefined) return null;
+    if (v === "" || v == null) return null;
     const n = parseFloat(v);
     return isNaN(n) ? null : n;
   }
 
-  // ---------- Persistenz & Tabelle ----------
+  // ---------- Liste ----------
   let invoices = [];
-  try {
-    invoices = JSON.parse(localStorage.getItem(LS_KEY_INVOICES) || "[]");
-  } catch (e) {
-    invoices = [];
-  }
+  try { invoices = JSON.parse(localStorage.getItem(LS_KEY_INVOICES) || "[]"); } catch { invoices = []; }
 
-  function persistInvoices() {
-    localStorage.setItem(LS_KEY_INVOICES, JSON.stringify(invoices));
-  }
+  function persist() { localStorage.setItem(LS_KEY_INVOICES, JSON.stringify(invoices)); }
 
-  const invoiceTbody = document.getElementById("invoiceTbody");
-  const countBadge = document.getElementById("countBadge");
+  const listEl = $("invoiceList");
+  const archiveActions = $("archiveActions");
 
-  function fmt(n) {
-    return (n === null || n === undefined || n === "") ? "" : Number(n).toFixed(2);
-  }
-
-  function renderTable() {
-    invoiceTbody.innerHTML = "";
-    invoices.forEach((inv) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(inv.datum || "")}</td>
-        <td>${escapeHtml(inv.lieferant || "")}</td>
-        <td>${escapeHtml(inv.rechnungsnummer || "")}</td>
-        <td>${fmt(inv.nettobetrag)}</td>
-        <td>${fmt(inv.mwst_satz)}</td>
-        <td>${fmt(inv.mwst_betrag)}</td>
-        <td>${fmt(inv.gesamtbetrag)}</td>
-        <td>${escapeHtml(inv.waehrung || "")}</td>
-        <td>${escapeHtml(inv.kategorie || "")}</td>
-        <td>${escapeHtml(inv.archiveFilename || "")}</td>
-        <td><button class="secondary" data-id="${inv.id}" style="padding:4px 8px;">Löschen</button></td>
-      `;
-      invoiceTbody.appendChild(tr);
-    });
-    countBadge.textContent = `${invoices.length} Rechnung${invoices.length === 1 ? "" : "en"}`;
-  }
-
-  function escapeHtml(s) {
+  function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
-  invoiceTbody.addEventListener("click", (e) => {
+  function render() {
+    const total = invoices.reduce((s, i) => s + (i.gesamtbetrag || 0), 0);
+    const vat = invoices.reduce((s, i) => s + (i.mwst_betrag || 0), 0);
+    $("statCount").textContent = invoices.length;
+    $("statTotal").textContent = fmtMoneyShort.format(total);
+    $("statVat").textContent = fmtMoneyShort.format(vat);
+
+    if (invoices.length === 0) {
+      listEl.innerHTML = '<div class="empty">Noch keine Rechnungen erfasst.</div>';
+      archiveActions.classList.add("hidden");
+      return;
+    }
+    archiveActions.classList.remove("hidden");
+
+    listEl.innerHTML = invoices.slice().reverse().map((inv) => {
+      const meta = [
+        inv.datum ? new Date(inv.datum + "T00:00:00").toLocaleDateString("de-DE") : "ohne Datum",
+        inv.rechnungsnummer || null,
+        inv.mwst_betrag != null ? "MwSt " + fmtMoney.format(inv.mwst_betrag) : null,
+        inv.kategorie || null
+      ].filter(Boolean).join(" · ");
+      return `
+        <div class="item">
+          <div class="item-main">
+            <div class="item-top">
+              <span class="item-name">${esc(inv.lieferant || "Unbekannt")}</span>
+              <span class="item-amount">${inv.gesamtbetrag != null ? fmtMoney.format(inv.gesamtbetrag) : "—"}</span>
+            </div>
+            <div class="item-meta">${esc(meta)}</div>
+          </div>
+          <button class="item-del" data-id="${inv.id}" aria-label="Eintrag löschen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>`;
+    }).join("");
+  }
+
+  listEl.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-id]");
     if (!btn) return;
-    const id = btn.getAttribute("data-id");
-    invoices = invoices.filter(i => i.id !== id);
-    persistInvoices();
-    renderTable();
+    invoices = invoices.filter((i) => i.id !== btn.getAttribute("data-id"));
+    persist();
+    render();
+    toast("Eintrag gelöscht");
   });
 
-  document.getElementById("clearAllBtn").addEventListener("click", () => {
-    if (invoices.length === 0) return;
-    if (!confirm("Wirklich alle erfassten Rechnungen aus der Liste löschen? Bereits archivierte Fotos/Excel-Dateien bleiben davon unberührt.")) return;
+  $("clearAllBtn").addEventListener("click", () => {
+    if (invoices.length === 0) { toast("Die Liste ist bereits leer"); return; }
+    if (!confirm("Wirklich alle erfassten Rechnungen aus der Liste löschen?")) return;
     invoices = [];
-    persistInvoices();
-    renderTable();
+    persist();
+    render();
+    toast("Alle Einträge gelöscht");
+    closeSettings();
   });
 
-  // ---------- Excel-Export ----------
-  const exportBtn = document.getElementById("exportBtn");
-  const exportStatus = document.getElementById("exportStatus");
-  exportBtn.addEventListener("click", () => exportExcel(false));
+  // ---------- Excel ----------
+  $("exportBtn").addEventListener("click", () => exportExcel(false));
 
   async function exportExcel(silent) {
     const headers = ["Datum", "Lieferant", "Rechnungsnummer", "Nettobetrag", "MwSt-Satz (%)", "MwSt-Betrag", "Gesamtbetrag", "Währung", "Kategorie", "Notizen", "Archivdatei", "Erfasst am"];
-    const rows = invoices.map(i => [
+    const rows = invoices.map((i) => [
       i.datum || "", i.lieferant || "", i.rechnungsnummer || "",
       i.nettobetrag, i.mwst_satz, i.mwst_betrag, i.gesamtbetrag,
       i.waehrung || "", i.kategorie || "", i.notizen || "",
       i.archiveFilename || "", i.erfasstAm || ""
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws["!cols"] = [
-      { wch: 12 }, { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 12 },
-      { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 24 }, { wch: 28 }, { wch: 20 }
-    ];
+    ws["!cols"] = [{ wch: 12 }, { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 24 }, { wch: 28 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Rechnungen");
 
     if (dirHandle) {
       try {
-        const arrBuf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-        await writeFileToDir("rechnungen.xlsx", new Blob([arrBuf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-        if (!silent) {
-          exportStatus.textContent = 'Excel-Datei "rechnungen.xlsx" im Archivordner aktualisiert.';
-          exportStatus.className = "status ok";
-        }
+        const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+        await writeFileToDir("rechnungen.xlsx", new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        if (!silent) toast("rechnungen.xlsx im Archivordner aktualisiert");
         return;
       } catch (e) {
-        console.warn("Schreiben in Ordner fehlgeschlagen, weiche auf Download aus:", e);
+        console.warn("Ordner-Schreibzugriff fehlgeschlagen:", e);
       }
     }
-
     XLSX.writeFile(wb, "rechnungen.xlsx");
-    if (!silent) {
-      exportStatus.textContent = 'Excel-Datei "rechnungen.xlsx" heruntergeladen.';
-      exportStatus.className = "status ok";
-    }
+    if (!silent) toast("rechnungen.xlsx heruntergeladen");
   }
 
-  // ---------- Initial render ----------
-  renderTable();
+  render();
 })();
 </script>
 
