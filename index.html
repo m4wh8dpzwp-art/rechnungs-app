@@ -486,7 +486,7 @@
       <div class="card stack">
         <div>
           <label for="apiKey">API-Key</label>
-          <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" autocapitalize="off" spellcheck="false">
+          <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <div>
           <label for="model">Modell</label>
@@ -514,15 +514,15 @@
         <div class="status">Gleicht die Rechnungsdaten über ein <strong>privates</strong> GitHub-Repo zwischen deinen Geräten ab. Fotos bleiben lokal.</div>
         <div>
           <label for="syncOwner">GitHub-Benutzer</label>
-          <input type="text" id="syncOwner" placeholder="dein-username" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <input type="text" id="syncOwner" placeholder="dein-username" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <div>
           <label for="syncRepo">Daten-Repo (privat)</label>
-          <input type="text" id="syncRepo" placeholder="rechnungs-daten" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <input type="text" id="syncRepo" placeholder="rechnungs-daten" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <div>
           <label for="syncToken">Fine-grained Token</label>
-          <input type="password" id="syncToken" placeholder="github_pat_..." autocomplete="off" autocapitalize="off" spellcheck="false">
+          <input type="password" id="syncToken" placeholder="github_pat_..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         </div>
         <button class="btn-primary" id="saveSyncBtn">Sync aktivieren</button>
         <button class="btn-secondary hidden" id="syncNowBtn">Jetzt synchronisieren</button>
@@ -1144,7 +1144,9 @@
       if (res.rateRemaining === "0") return "GitHub-Limit erreicht — später erneut versuchen";
       return "Zugriff verweigert — Token braucht „Contents: Read and write“ für dieses Repo";
     }
-    if (res.status === 404) return "Repo nicht gefunden — Benutzer/Repo prüfen oder Token ohne Zugriff";
+    if (res.status === 404) {
+      return `„${syncCfg.owner}/${syncCfg.repo}“ nicht gefunden — Schreibweise prüfen, oder der Token ist nicht für dieses Repo freigegeben`;
+    }
     return `GitHub ${res.status}${apiMsg ? ": " + apiMsg : ""}`;
   }
 
