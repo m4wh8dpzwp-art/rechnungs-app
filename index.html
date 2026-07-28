@@ -1150,6 +1150,34 @@
     return `GitHub ${res.status}${apiMsg ? ": " + apiMsg : ""}`;
   }
 
+  // Ermittelt bei einem 404 die tatsächliche Ursache, statt nur „nicht gefunden“ zu melden.
+  async function diagnoseAccess() {
+    const ziel = `${syncCfg.owner}/${syncCfg.repo}`;
+
+    const me = await ghRequest("GET", "https://api.github.com/user");
+    if (me.status === 401) return "Token ungültig oder abgelaufen — bitte einen neuen erzeugen";
+    if (!me.ok) return `„${ziel}“ nicht erreichbar (GitHub ${me.status})`;
+
+    const login = (me.data && me.data.login) || "";
+    if (login && login.toLowerCase() !== syncCfg.owner.toLowerCase()) {
+      return `Der Token gehört zum Konto „${login}“, eingetragen ist „${syncCfg.owner}“ — Benutzername anpassen`;
+    }
+
+    const list = await ghRequest("GET", "https://api.github.com/user/repos?per_page=100");
+    if (list.ok && Array.isArray(list.data)) {
+      const namen = list.data.map((r) => r.full_name);
+      if (namen.some((n) => n.toLowerCase() === ziel.toLowerCase())) {
+        return `„${ziel}“ existiert, der Token erreicht es aber nicht. Bei „Repository access“ genau dieses Repo auswählen und „Contents: Read and write“ setzen.`;
+      }
+      if (namen.length === 0) {
+        return `Der Token hat auf kein einziges Repository Zugriff — unter „Repository access“ das Repo „${syncCfg.repo}“ auswählen.`;
+      }
+      return `„${ziel}“ ist für diesen Token nicht freigegeben. Freigegeben: ${namen.slice(0, 3).join(", ")}${namen.length > 3 ? " …" : ""}`;
+    }
+
+    return `„${ziel}“ nicht gefunden — Schreibweise prüfen, oder der Token ist nicht für dieses Repo freigegeben`;
+  }
+
   async function ghTree() {
     const res = await ghRequest("GET", repoUrl("/git/trees/HEAD?recursive=1"));
     if (res.status === 404 || res.status === 409) {
@@ -1392,8 +1420,10 @@
 
     const res = await ghRequest("GET", repoUrl(""));
     if (!res.ok) {
+      // Meldung erzeugen, solange syncCfg noch die eingegebenen Werte enthält
+      const meldung = res.status === 404 ? await diagnoseAccess() : ghError(res);
       syncCfg = previous;
-      syncSettingsStatus.textContent = ghError(res);
+      syncSettingsStatus.textContent = meldung;
       syncSettingsStatus.className = "status err";
       return;
     }
