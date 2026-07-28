@@ -271,6 +271,33 @@
 
   .empty { text-align: center; color: var(--text-dim); padding: 24px 12px; font-size: .9rem; }
 
+  .item-unsynced {
+    display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-dim);
+    margin-right: 6px; vertical-align: 1px;
+  }
+
+  /* ---------- Sync-Leiste ---------- */
+  .syncbar {
+    width: 100%;
+    margin-top: 12px;
+    justify-content: flex-start;
+    gap: 9px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: .82rem;
+    font-weight: 550;
+    padding: 10px 14px;
+    text-align: left;
+  }
+  .syncbar:hover { background: var(--surface-2); }
+  .syncbar svg { width: 15px; height: 15px; }
+  .syncbar.is-error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); }
+  .syncbar.is-busy { color: var(--accent); }
+  .syncbar .sb-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* ---------- Settings sheet ---------- */
   .backdrop {
     position: fixed; inset: 0; z-index: 50;
@@ -428,6 +455,11 @@
       <div class="stat"><div class="val" id="statTotal">0 €</div><div class="lbl">Gesamt</div></div>
       <div class="stat"><div class="val" id="statVat">0 €</div><div class="lbl">MwSt</div></div>
     </div>
+    <button class="syncbar hidden" id="syncBar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.6-4.2M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.6 4.2"/><path d="M21 3v4.2h-4.2M3 21v-4.2h4.2"/></svg>
+      <span class="sb-text" id="syncBarText">Nicht synchronisiert</span>
+    </button>
+
     <div class="list" id="invoiceList" style="margin-top:12px"></div>
     <div class="actions" id="archiveActions">
       <button class="btn-secondary" id="exportBtn">
@@ -472,6 +504,42 @@
           <code>api.anthropic.com</code> gesendet — es gibt keinen Zwischenserver. Da die App komplett
           client-seitig läuft, ist der Key im Browser einsehbar; nutze sie daher nur auf deinen eigenen
           Geräten. Rechnungsfotos werden zur Auswertung an die Claude-API übertragen.</p>
+        </details>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <h3 class="card-title">Synchronisierung <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></h3>
+      <div class="card stack">
+        <div class="status">Gleicht die Rechnungsdaten über ein <strong>privates</strong> GitHub-Repo zwischen deinen Geräten ab. Fotos bleiben lokal.</div>
+        <div>
+          <label for="syncOwner">GitHub-Benutzer</label>
+          <input type="text" id="syncOwner" placeholder="dein-username" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div>
+          <label for="syncRepo">Daten-Repo (privat)</label>
+          <input type="text" id="syncRepo" placeholder="rechnungs-daten" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div>
+          <label for="syncToken">Fine-grained Token</label>
+          <input type="password" id="syncToken" placeholder="github_pat_..." autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <button class="btn-primary" id="saveSyncBtn">Sync aktivieren</button>
+        <button class="btn-secondary hidden" id="syncNowBtn">Jetzt synchronisieren</button>
+        <button class="btn-danger hidden" id="disableSyncBtn">Sync deaktivieren</button>
+        <div id="syncSettingsStatus" class="status"></div>
+        <details class="note">
+          <summary>Token korrekt anlegen</summary>
+          <p>Lege unter <em>GitHub → Settings → Developer settings → Personal access tokens →
+          Fine-grained tokens</em> einen Token an und beschränke ihn auf
+          <strong>genau dieses eine Repository</strong>. Als Berechtigung genügt
+          <strong>Repository permissions → Contents: Read and write</strong> — mehr wird nicht
+          gebraucht und sollte auch nicht vergeben werden.</p>
+          <p>Der Token wird wie der Claude-Key nur in diesem Browser gespeichert und ausschließlich
+          an <code>api.github.com</code> gesendet. Da er auf ein einzelnes Repo begrenzt ist, wäre
+          der Schaden bei einem Verlust auf dieses Daten-Repo beschränkt. Nutze für das Repo
+          unbedingt die Sichtbarkeit <strong>Private</strong> — Rechnungsdaten gehören nicht in ein
+          öffentliches Repository.</p>
         </details>
       </div>
     </div>
@@ -835,7 +903,7 @@
         downloadBlob(archiveFilename, blob);
       }
 
-      invoices.push({
+      const record = {
         id: Date.now() + "_" + Math.random().toString(36).slice(2, 8),
         datum: f.datum.value,
         lieferant: f.lieferant.value,
@@ -849,11 +917,13 @@
         notizen: f.notizen.value,
         archiveFilename,
         erfasstAm: new Date().toISOString()
-      });
+      };
+      invoices.push(record);
       persist();
       render();
 
       if (dirHandle) await exportExcel(true);
+      if (syncEnabled()) syncNow({ silent: true });
 
       saveStatus.textContent = "";
       toast(via === "ordner" ? "Gespeichert und im Archivordner abgelegt" : "Gespeichert — Foto wurde heruntergeladen");
@@ -914,7 +984,7 @@
               <span class="item-name">${esc(inv.lieferant || "Unbekannt")}</span>
               <span class="item-amount">${inv.gesamtbetrag != null ? fmtMoney.format(inv.gesamtbetrag) : "—"}</span>
             </div>
-            <div class="item-meta">${esc(meta)}</div>
+            <div class="item-meta">${syncEnabled() && !inv._path ? '<span class="item-unsynced" title="Noch nicht synchronisiert"></span>' : ""}${esc(meta)}</div>
           </div>
           <button class="item-del" data-id="${inv.id}" aria-label="Eintrag löschen">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -926,18 +996,26 @@
   listEl.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-id]");
     if (!btn) return;
-    invoices = invoices.filter((i) => i.id !== btn.getAttribute("data-id"));
+    const id = btn.getAttribute("data-id");
+    const rec = invoices.find((i) => i.id === id);
+    invoices = invoices.filter((i) => i.id !== id);
     persist();
     render();
     toast("Eintrag gelöscht");
+    if (rec && rec._path) queueRemoteDelete(rec);
   });
 
   $("clearAllBtn").addEventListener("click", () => {
     if (invoices.length === 0) { toast("Die Liste ist bereits leer"); return; }
-    if (!confirm("Wirklich alle erfassten Rechnungen aus der Liste löschen?")) return;
+    const msg = syncEnabled()
+      ? "Wirklich alle erfassten Rechnungen löschen?\n\nDa die Synchronisierung aktiv ist, werden sie auch im Daten-Repo und damit auf allen verbundenen Geräten entfernt."
+      : "Wirklich alle erfassten Rechnungen aus der Liste löschen?";
+    if (!confirm(msg)) return;
+    const removed = invoices.filter((i) => i._path);
     invoices = [];
     persist();
     render();
+    removed.forEach(queueRemoteDelete);
     toast("Alle Einträge gelöscht");
     closeSettings();
   });
@@ -972,7 +1050,406 @@
     if (!silent) toast("rechnungen.xlsx heruntergeladen");
   }
 
+  // ---------- GitHub-Sync (optional) ----------
+  const LS_KEY_SYNC = "rechnungsapp_sync";
+  const LS_KEY_LASTSYNC = "rechnungsapp_lastsync";
+  const LS_KEY_PENDING = "rechnungsapp_pending_deletes";
+  const SYNC_DIR = "daten";
+
+  let syncCfg = { owner: "", repo: "", token: "" };
+  try { Object.assign(syncCfg, JSON.parse(localStorage.getItem(LS_KEY_SYNC) || "{}")); } catch (e) { /* ignoriert */ }
+
+  let pendingDeletes = [];
+  try { pendingDeletes = JSON.parse(localStorage.getItem(LS_KEY_PENDING) || "[]"); } catch (e) { pendingDeletes = []; }
+
+  let syncing = false;
+  let syncAgain = false;
+  let lastSyncAt = localStorage.getItem(LS_KEY_LASTSYNC) || null;
+
+  const syncBar = $("syncBar");
+  const syncBarText = $("syncBarText");
+  const syncSettingsStatus = $("syncSettingsStatus");
+  const syncNowBtn = $("syncNowBtn");
+  const disableSyncBtn = $("disableSyncBtn");
+
+  function syncEnabled() {
+    return !!(syncCfg.owner && syncCfg.repo && syncCfg.token);
+  }
+
+  function persistSyncCfg() { localStorage.setItem(LS_KEY_SYNC, JSON.stringify(syncCfg)); }
+  function persistPending() { localStorage.setItem(LS_KEY_PENDING, JSON.stringify(pendingDeletes)); }
+
+  // --- Base64 mit korrekter UTF-8-Behandlung (Umlaute in Lieferantennamen) ---
+  function b64encode(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  }
+  function b64decode(b64) {
+    const bin = atob(String(b64).replace(/\s/g, ""));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+
+  async function mapLimit(items, limit, fn) {
+    const results = new Array(items.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const idx = next++;
+        results[idx] = await fn(items[idx]);
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
+  // --- GitHub REST ---
+  function repoUrl(suffix) {
+    return `https://api.github.com/repos/${encodeURIComponent(syncCfg.owner)}/${encodeURIComponent(syncCfg.repo)}${suffix}`;
+  }
+  function contentsUrl(path) {
+    return repoUrl("/contents/" + path.split("/").map(encodeURIComponent).join("/"));
+  }
+
+  async function ghRequest(method, url, body) {
+    const resp = await fetch(url, {
+      method,
+      headers: {
+        "Accept": "application/vnd.github+json",
+        "Authorization": "Bearer " + syncCfg.token,
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(body ? { "Content-Type": "application/json" } : {})
+      },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    let data = null;
+    try { data = await resp.json(); } catch (e) { /* leere Antwort ist ok */ }
+    return {
+      ok: resp.ok,
+      status: resp.status,
+      data,
+      rateRemaining: resp.headers.get("x-ratelimit-remaining")
+    };
+  }
+
+  function ghError(res) {
+    const apiMsg = (res.data && res.data.message) || "";
+    if (res.status === 401) return "Token ungültig oder abgelaufen";
+    if (res.status === 403) {
+      if (res.rateRemaining === "0") return "GitHub-Limit erreicht — später erneut versuchen";
+      return "Zugriff verweigert — Token braucht „Contents: Read and write“ für dieses Repo";
+    }
+    if (res.status === 404) return "Repo nicht gefunden — Benutzer/Repo prüfen oder Token ohne Zugriff";
+    return `GitHub ${res.status}${apiMsg ? ": " + apiMsg : ""}`;
+  }
+
+  async function ghTree() {
+    const res = await ghRequest("GET", repoUrl("/git/trees/HEAD?recursive=1"));
+    if (res.status === 404 || res.status === 409) {
+      // Repo ohne Commits — beim ersten Schreiben wird es initialisiert
+      const msg = (res.data && res.data.message) || "";
+      if (/empty/i.test(msg) || res.status === 409) return [];
+      throw new Error(ghError(res));
+    }
+    if (!res.ok) throw new Error(ghError(res));
+    return (res.data.tree || []).filter((e) => e.type === "blob");
+  }
+
+  async function ghReadFile(path) {
+    const res = await ghRequest("GET", contentsUrl(path));
+    if (!res.ok) throw new Error(ghError(res));
+    return b64decode(res.data.content || "");
+  }
+
+  async function ghCurrentSha(path) {
+    const res = await ghRequest("GET", contentsUrl(path));
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(ghError(res));
+    return res.data.sha || null;
+  }
+
+  async function ghWriteFile(path, text, sha, message) {
+    const payload = { message, content: b64encode(text) };
+    if (sha) payload.sha = sha;
+    let res = await ghRequest("PUT", contentsUrl(path), payload);
+
+    // 409/422 = Datei wurde zwischenzeitlich von einem anderen Gerät geändert.
+    // Aktuellen sha holen und genau einmal erneut versuchen.
+    if (res.status === 409 || res.status === 422) {
+      const current = await ghCurrentSha(path);
+      const retry = { message, content: payload.content };
+      if (current) retry.sha = current;
+      res = await ghRequest("PUT", contentsUrl(path), retry);
+    }
+    if (!res.ok) throw new Error(ghError(res));
+    return res.data;
+  }
+
+  async function ghDeleteFile(path, sha, message) {
+    const res = await ghRequest("DELETE", contentsUrl(path), { message, sha });
+    if (res.status === 404) return; // schon weg
+    if (res.status === 409 || res.status === 422) {
+      const current = await ghCurrentSha(path);
+      if (!current) return;
+      const retry = await ghRequest("DELETE", contentsUrl(path), { message, sha: current });
+      if (!retry.ok && retry.status !== 404) throw new Error(ghError(retry));
+      return;
+    }
+    if (!res.ok) throw new Error(ghError(res));
+  }
+
+  // --- Datensatz <-> Datei ---
+  function buildPath(inv) {
+    const datum = inv.datum || "ohne-datum";
+    const slug = sanitizeForFilename(inv.lieferant).toLowerCase();
+    const suffix = String(inv.id).split("_")[1] || String(inv.id).slice(-6);
+    return `${SYNC_DIR}/${sanitizeForFilename(datum)}_${slug}_${suffix}.json`;
+  }
+
+  function fileBody(inv) {
+    const out = { schema: 1 };
+    Object.keys(inv).forEach((k) => { if (k[0] !== "_") out[k] = inv[k]; });
+    return JSON.stringify(out, null, 2);
+  }
+
+  function recordFromFile(obj) {
+    const rec = {};
+    Object.keys(obj).forEach((k) => { if (k[0] !== "_" && k !== "schema") rec[k] = obj[k]; });
+    return rec;
+  }
+
+  function sortInvoices() {
+    invoices.sort((a, b) => String(a.erfasstAm || a.datum || a.id).localeCompare(String(b.erfasstAm || b.datum || b.id)));
+  }
+
+  function queueRemoteDelete(rec) {
+    if (!rec._path) return;
+    pendingDeletes.push({ path: rec._path, sha: rec._sha || null });
+    persistPending();
+    if (syncEnabled()) syncNow({ silent: true });
+  }
+
+  // --- Statusanzeige ---
+  function formatSyncTime(iso) {
+    if (!iso) return null;
+    const d = new Date(iso);
+    const heute = new Date().toDateString() === d.toDateString();
+    return heute
+      ? d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function setSyncState(state, message) {
+    if (!syncEnabled()) {
+      syncBar.classList.add("hidden");
+      return;
+    }
+    syncBar.classList.remove("hidden");
+    syncBar.classList.toggle("is-error", state === "error");
+    syncBar.classList.toggle("is-busy", state === "busy");
+
+    if (state === "busy") {
+      syncBarText.textContent = "Synchronisiere…";
+    } else if (state === "error") {
+      syncBarText.textContent = message || "Sync fehlgeschlagen — tippen für neuen Versuch";
+    } else {
+      const t = formatSyncTime(lastSyncAt);
+      const offen = invoices.filter((i) => !i._path).length + pendingDeletes.length;
+      syncBarText.textContent = (t ? "Zuletzt synchronisiert " + t : "Noch nicht synchronisiert")
+        + (offen ? ` · ${offen} offen` : "");
+    }
+  }
+
+  function refreshSyncSettingsUi() {
+    const on = syncEnabled();
+    syncNowBtn.classList.toggle("hidden", !on);
+    disableSyncBtn.classList.toggle("hidden", !on);
+    $("saveSyncBtn").textContent = on ? "Zugangsdaten aktualisieren" : "Sync aktivieren";
+    if (on) {
+      syncSettingsStatus.textContent = `Aktiv: ${syncCfg.owner}/${syncCfg.repo}`;
+      syncSettingsStatus.className = "status ok";
+    } else {
+      syncSettingsStatus.textContent = "Nicht aktiv — Daten bleiben nur auf diesem Gerät.";
+      syncSettingsStatus.className = "status";
+    }
+  }
+
+  // --- Hauptablauf ---
+  async function syncNow(opts) {
+    opts = opts || {};
+    if (!syncEnabled()) return;
+    if (syncing) { syncAgain = true; return; }  // Änderung während des Laufs → danach erneut
+    syncing = true;
+    syncAgain = false;
+    setSyncState("busy");
+
+    try {
+      const tree = await ghTree();
+      const remote = new Map(
+        tree.filter((e) => e.path.startsWith(SYNC_DIR + "/") && e.path.endsWith(".json"))
+            .map((e) => [e.path, e.sha])
+      );
+
+      // 1. Offene Löschungen nachziehen (z.B. offline gelöscht)
+      const stillPending = [];
+      for (const p of pendingDeletes) {
+        const sha = remote.get(p.path) || p.sha;
+        if (!remote.has(p.path)) { continue; }  // remote bereits weg
+        try {
+          await ghDeleteFile(p.path, sha, "Beleg gelöscht");
+          remote.delete(p.path);
+        } catch (e) {
+          stillPending.push(p);
+        }
+      }
+      pendingDeletes = stillPending;
+      persistPending();
+
+      // 2. Lokale Einträge ohne Remote-Datei hochladen (deckt auch die Erstmigration ab)
+      for (const inv of invoices) {
+        if (inv._path) continue;
+        const path = buildPath(inv);
+        const res = await ghWriteFile(path, fileBody(inv), remote.get(path), `Beleg ${inv.lieferant || ""}`.trim());
+        inv._path = path;
+        inv._sha = res && res.content ? res.content.sha : null;
+        remote.set(path, inv._sha);
+      }
+
+      // 3. Remote-Dateien holen, die lokal fehlen oder sich geändert haben
+      const byPath = new Map(invoices.filter((i) => i._path).map((i) => [i._path, i]));
+      const toFetch = [];
+      remote.forEach((sha, path) => {
+        const local = byPath.get(path);
+        if (!local || local._sha !== sha) toFetch.push({ path, sha });
+      });
+
+      const fetched = await mapLimit(toFetch, 5, async (f) => {
+        try {
+          return { path: f.path, sha: f.sha, data: JSON.parse(await ghReadFile(f.path)) };
+        } catch (e) {
+          console.warn("Datei übersprungen:", f.path, e);
+          return null;
+        }
+      });
+
+      for (const f of fetched) {
+        if (!f || !f.data || !f.data.id) continue;
+        const rec = recordFromFile(f.data);
+        rec._path = f.path;
+        rec._sha = f.sha;
+        const idx = invoices.findIndex((i) => i.id === rec.id);
+        if (idx >= 0) invoices[idx] = rec; else invoices.push(rec);
+      }
+
+      // 4. Lokal entfernen, was remote gelöscht wurde
+      invoices = invoices.filter((i) => !i._path || remote.has(i._path));
+
+      sortInvoices();
+      persist();
+      render();
+
+      lastSyncAt = new Date().toISOString();
+      localStorage.setItem(LS_KEY_LASTSYNC, lastSyncAt);
+      setSyncState("idle");
+      if (!opts.silent) toast("Synchronisiert");
+    } catch (err) {
+      console.error("Sync-Fehler:", err);
+      setSyncState("error", err.message);
+      if (!opts.silent) toast("Sync-Fehler: " + err.message);
+    } finally {
+      syncing = false;
+      if (syncAgain) { syncAgain = false; syncNow({ silent: true }); }
+    }
+  }
+
+  // --- Einstellungen verdrahten ---
+  $("syncOwner").value = syncCfg.owner || "";
+  $("syncRepo").value = syncCfg.repo || "";
+  $("syncToken").value = syncCfg.token || "";
+
+  $("saveSyncBtn").addEventListener("click", async () => {
+    const owner = $("syncOwner").value.trim();
+    const repo = $("syncRepo").value.trim().replace(/^.*\//, "");
+    const token = $("syncToken").value.trim();
+
+    if (!owner || !repo || !token) {
+      syncSettingsStatus.textContent = "Bitte Benutzer, Repo und Token ausfüllen.";
+      syncSettingsStatus.className = "status err";
+      return;
+    }
+
+    const previous = { ...syncCfg };
+    syncCfg = { owner, repo, token };
+    syncSettingsStatus.innerHTML = '<span class="spinner"></span>Prüfe Zugriff…';
+    syncSettingsStatus.className = "status";
+
+    const res = await ghRequest("GET", repoUrl(""));
+    if (!res.ok) {
+      syncCfg = previous;
+      syncSettingsStatus.textContent = ghError(res);
+      syncSettingsStatus.className = "status err";
+      return;
+    }
+    if (res.data && res.data.private === false) {
+      const weiter = confirm(
+        "Achtung: Dieses Repository ist ÖFFENTLICH.\n\n" +
+        "Deine Rechnungsdaten wären damit für jeden im Internet lesbar. " +
+        "Empfohlen ist ein privates Repository.\n\nTrotzdem fortfahren?"
+      );
+      if (!weiter) {
+        syncCfg = previous;
+        syncSettingsStatus.textContent = "Abgebrochen — bitte ein privates Repo verwenden.";
+        syncSettingsStatus.className = "status err";
+        return;
+      }
+    }
+
+    persistSyncCfg();
+    refreshSyncSettingsUi();
+    render();
+    toast("Sync aktiviert");
+    await syncNow({ silent: false });
+  });
+
+  syncNowBtn.addEventListener("click", () => syncNow({ silent: false }));
+
+  disableSyncBtn.addEventListener("click", () => {
+    if (!confirm("Synchronisierung deaktivieren?\n\nDie Daten bleiben lokal und im Repo erhalten; dieses Gerät gleicht nur nicht mehr ab.")) return;
+    syncCfg = { owner: "", repo: "", token: "" };
+    pendingDeletes = [];
+    invoices.forEach((i) => { delete i._path; delete i._sha; });
+    localStorage.removeItem(LS_KEY_SYNC);
+    localStorage.removeItem(LS_KEY_LASTSYNC);
+    localStorage.removeItem(LS_KEY_PENDING);
+    lastSyncAt = null;
+    $("syncToken").value = "";
+    persist();
+    render();
+    refreshSyncSettingsUi();
+    setSyncState("idle");
+    toast("Sync deaktiviert");
+  });
+
+  syncBar.addEventListener("click", () => syncNow({ silent: false }));
+
+  // Beim Zurückkehren zur App abgleichen (höchstens einmal pro Minute)
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !syncEnabled()) return;
+    const age = lastSyncAt ? Date.now() - new Date(lastSyncAt).getTime() : Infinity;
+    if (age > 60000) syncNow({ silent: true });
+  });
+
+  // ---------- Start ----------
+  sortInvoices();
   render();
+  refreshSyncSettingsUi();
+  setSyncState("idle");
+  if (syncEnabled()) syncNow({ silent: true });
 })();
 </script>
 

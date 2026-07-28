@@ -43,6 +43,50 @@ Daten löschen) steckt hinter dem Zahnrad oben rechts.
    - Die Ordnerverbindung gilt pro Browser-Sitzung (Tab-Neuladen erfordert erneutes Auswählen).
 4. "Kamera" bzw. "Galerie" antippen, "Rechnung auslesen" klicken, Felder prüfen, "Speichern".
 
+## Synchronisierung zwischen Geräten (optional)
+
+Ohne Einrichtung bleiben alle Daten nur auf dem jeweiligen Gerät. Wer dieselbe Belegliste auf
+PC und iPhone haben will, kann sie über ein **privates GitHub-Repo** abgleichen. Synchronisiert
+werden nur die Rechnungsdaten (Text) — **Fotos bleiben lokal** und werden weiterhin als Datei
+abgelegt.
+
+**Einrichtung:**
+
+1. Auf GitHub ein **neues, privates** Repository anlegen (z.B. `rechnungs-daten`). Leer lassen —
+   die App legt die Dateien selbst an.
+2. Unter *Settings → Developer settings → Personal access tokens → Fine-grained tokens* einen
+   Token erzeugen:
+   - *Repository access*: **Only select repositories** → genau dieses eine Daten-Repo
+   - *Repository permissions*: **Contents: Read and write** (mehr wird nicht benötigt)
+3. In der App: Zahnrad → "Synchronisierung" → Benutzer, Repo-Name und Token eintragen →
+   "Sync aktivieren". Die App prüft den Zugriff, warnt bei einem öffentlichen Repo und lädt
+   anschließend alle bereits lokal erfassten Belege hoch.
+4. Auf dem zweiten Gerät dieselben drei Angaben eintragen — die vorhandenen Belege werden
+   heruntergeladen.
+
+**Funktionsweise und Verhalten:**
+
+- Pro Beleg wird eine eigene Datei geschrieben (`daten/2026-07-15_lieferant_a1b2.json`). Weil
+  zwei Geräte nie dieselbe Datei anfassen, entstehen beim parallelen Erfassen keine Konflikte.
+- Beim Laden holt die App die Dateiliste über die Git-Trees-API und lädt nur Dateien, deren
+  Inhalt sich geändert hat; `localStorage` dient als lokaler Cache.
+- Schreibkonflikte (HTTP 409/422) werden erkannt und automatisch mit dem aktuellen Stand
+  wiederholt.
+- Ohne Verbindung gelöschte Belege werden vorgemerkt und beim nächsten erfolgreichen Sync im
+  Repo nachgezogen — sie tauchen nicht wieder auf.
+- Die Sync-Leiste über der Belegliste zeigt den Zeitpunkt des letzten Abgleichs, die Anzahl noch
+  offener Einträge und Fehler; ein Tippen darauf startet einen erneuten Versuch. Noch nicht
+  hochgeladene Belege tragen in der Liste einen kleinen grauen Punkt.
+- Abgeglichen wird beim Start, nach dem Speichern/Löschen, beim Zurückkehren zur App (höchstens
+  einmal pro Minute) und manuell.
+- "Alle Einträge löschen" entfernt bei aktivem Sync auch die Dateien im Repo — der Bestätigungs-
+  dialog weist darauf hin.
+
+**Sicherheit:** Der Token liegt wie der Claude-Key nur im `localStorage` dieses Browsers und
+geht ausschließlich an `api.github.com`. Da er auf ein einzelnes Repo und `Contents` beschränkt
+ist, bliebe der Schaden bei einem Verlust auf dieses Daten-Repo begrenzt. Fine-grained Tokens
+laufen ab (max. ~1 Jahr) und müssen dann neu hinterlegt werden.
+
 ## Technische Details
 
 - Einzelne HTML-Datei (`index.html`) mit eingebettetem CSS/JS — keine Build-Tools nötig.
@@ -65,8 +109,9 @@ Daten löschen) steckt hinter dem Zahnrad oben rechts.
 - Die Felderkennung per Vision-Modell ist nicht fehlerfrei — insbesondere bei schlechten Fotos,
   handschriftlichen Belegen oder unüblichen Layouts. Das Prüf-Formular vor dem Speichern ist
   bewusst Teil des Workflows.
-- Kein Mehrbenutzer-/Cloud-Sync — alles ist lokal im jeweiligen Browser. API-Key und Belegliste
-  sind pro Gerät getrennt: auf dem iPhone muss der Key einmal separat eingegeben werden, und
-  dort erfasste Belege erscheinen nicht am PC (und umgekehrt).
+- API-Key und Token sind pro Gerät getrennt und müssen auf jedem Gerät einmal eingegeben werden.
+- Ohne aktivierte Synchronisierung sind die Beleglisten pro Gerät getrennt.
+- Fotos werden nicht synchronisiert — sie liegen nur dort, wo sie beim Speichern abgelegt wurden.
+  Auf einem zweiten Gerät erscheint der Beleg mit allen Daten, aber ohne zugehörige Bilddatei.
 - Bei sehr vielen Rechnungen könnte `localStorage` (i.d.R. ~5–10 MB) irgendwann eng werden; die
   Textdaten pro Rechnung sind aber klein, das reicht für tausende Einträge.
