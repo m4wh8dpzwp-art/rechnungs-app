@@ -45,22 +45,45 @@ Daten löschen) steckt hinter dem Zahnrad oben rechts.
 
 ## Kategorien und Auswertung
 
-Jede Rechnung wird einer Kategorie zugeordnet. Vorgegeben sind **Mechatronik**, **Pension** und
-**HW**; die Liste lässt sich jederzeit erweitern.
+Es gibt genau vier feste Kategorien: **Mechatronik**, **Pension**, **Privat**, **HW**.
 
-- **Automatischer Vorschlag:** Beim Auslesen bekommt Claude die aktuelle Kategorienliste als feste
-  Auswahl vorgegeben und ordnet die Rechnung der am besten passenden zu. Der Vorschlag ist im
-  Formular vorausgewählt und vor dem Speichern änderbar.
-- **Neue Kategorie anlegen:** entweder im Auswahlfeld über "+ neue Kategorie…" (im Formular und
-  direkt in jeder Belegkarte) oder unter Zahnrad → "Kategorien". Kategorien, die bereits in einem
-  Beleg verwendet werden, lassen sich nicht löschen.
+- **Automatischer Vorschlag:** Beim Auslesen bekommt Claude die Kategorienliste als feste Auswahl
+  vorgegeben und ordnet die Rechnung der am besten passenden zu. Der Vorschlag ist im Formular
+  vorausgewählt und vor dem Speichern änderbar.
 - **Nachträglich zuordnen:** Jede Belegkarte in der Liste hat ein Kategorie-Feld. Belege ohne
   Kategorie sind an der gestrichelten Umrandung erkennbar. Die Änderung wird sofort gespeichert
   und – bei aktivem Sync – ins Repo übertragen.
+- Enthält ein alter Beleg eine Kategorie außerhalb der vier, bleibt dieser Wert sichtbar und
+  auswählbar, bis er umgestellt wird — es geht also nichts verloren.
 - **Auswertung:** Über der Belegliste stehen zwei Filter (Jahr und Monat). Sie wirken auf die
   Kennzahlen, die Auswertung und die Liste. Die Auswertung zeigt pro Kategorie Summe, Anzahl,
   MwSt-Betrag und Anteil, sortiert nach Summe, mit Gesamtzeile.
-- Der Excel-Export enthält weiterhin **alle** Belege samt Kategorie, unabhängig vom Filter.
+- Der Excel-Export ("Alles als Excel") enthält weiterhin **alle** Belege samt Kategorie,
+  unabhängig vom Filter. Für einen Zeitraum gibt es stattdessen den Bericht (siehe unten).
+
+## Belegdateien und Bericht
+
+**Erfassen:** Neben Fotos lassen sich auch **PDF-Rechnungen** hochladen; beide gehen denselben
+Weg durch die Auslesung (Fotos als Bild, PDFs als Dokument an die Claude-API).
+
+**Ansehen:** Ein Tipp auf eine Belegkarte öffnet den Originalbeleg in der App — Fotos direkt,
+PDFs eingebettet, jeweils mit "In neuem Tab öffnen" und "Herunterladen". Bei Belegen ohne
+hinterlegte Datei (z.B. vor dieser Version erfasst) lässt sich eine Datei nachtragen.
+
+**Speicherung:** Originaldateien liegen lokal in IndexedDB — als Warteschlange für den Upload und
+als Offline-Cache. Fotos werden vor dem Speichern auf max. 1600 px Kantenlänge verkleinert und als
+JPEG (Qualität 80 %) abgelegt; das begrenzt das Wachstum des Sync-Repos und senkt zugleich die
+Bild-Tokens beim Auslesen. PDFs werden unverändert übernommen (max. 15 MB).
+
+**Bericht:** Der Button "Bericht erstellen" öffnet einen Dialog mit Jahr, Monat und Kategorie.
+Erzeugt werden **zwei getrennte Dateien**:
+
+- ein **PDF** mit den Originalbelegen des Zeitraums hintereinander — Fotos seitenfüllend auf A4
+  zentriert, PDF-Belege mit allen ihren Seiten übernommen;
+- eine **Excel-Datei** mit zwei Blättern: "Auswertung" (Summen je Kategorie mit Netto, MwSt,
+  Gesamt und Gesamtsumme) und "Belege" (alle Einzelbelege des Zeitraums).
+
+Belege ohne hinterlegte Datei werden im PDF übersprungen; die Statuszeile nennt deren Anzahl.
 
 ## Synchronisierung zwischen Geräten (optional)
 
@@ -88,8 +111,18 @@ abgelegt.
 - Pro Beleg wird eine eigene Datei geschrieben (`daten/2026-07-15_lieferant_a1b2.json`). Weil
   zwei Geräte nie dieselbe Datei anfassen, entstehen beim parallelen Erfassen keine Konflikte.
 - Die Datei enthält alle Felder des Belegs einschließlich der Kategorie. Wird eine Kategorie
-  nachträglich geändert, wird dieselbe Datei aktualisiert (kein zweiter Eintrag). Dadurch stehen
-  auf einem Gerät neu angelegte Kategorien nach dem Abgleich auch auf dem anderen zur Verfügung.
+  nachträglich geändert, wird dieselbe Datei aktualisiert (kein zweiter Eintrag).
+- **Originalbelege** werden als `belege/<id>.jpg` bzw. `belege/<id>.pdf` mitsynchronisiert. Die
+  Datenzeile verweist über `belegPfad` darauf; die Datei wird immer vor der Datenzeile
+  hochgeladen, damit kein Verweis ins Leere zeigt. Gelesen werden die Dateien über die
+  **Blobs-API** (`/git/blobs/<sha>`), da die Contents-API Inhalte nur bis 1 MB ausliefert.
+- Heruntergeladen werden Belegdateien erst bei Bedarf (Belegansicht oder Bericht) und dann lokal
+  zwischengespeichert — ein Abgleich lädt also nicht das ganze Archiv.
+- Beim Löschen eines Belegs werden Datenzeile und Belegdatei entfernt.
+- **Schutz vor Datenverlust:** Fehlt beim Abgleich auf einmal ein Großteil der Belege im Repo
+  (z.B. falsches Repo verbunden), werden sie **nicht** lokal gelöscht; stattdessen erscheint ein
+  Hinweis in der Sync-Leiste. Beim Wechsel auf ein anderes Repo werden gespeicherte Pfade
+  zurückgesetzt, sodass alles neu hochgeladen statt als gelöscht gewertet wird.
 - Beim Laden holt die App die Dateiliste über die Git-Trees-API und lädt nur Dateien, deren
   Inhalt sich geändert hat; `localStorage` dient als lokaler Cache.
 - Schreibkonflikte (HTTP 409/422) werden erkannt und automatisch mit dem aktuellen Stand
@@ -117,6 +150,8 @@ laufen ab (max. ~1 Jahr) und müssen dann neu hinterlegt werden.
   Kamera-Direktaufnahme via `capture="environment"`.
 - Excel-Erzeugung läuft komplett im Browser über [SheetJS](https://sheetjs.com/)
   (`lib/xlsx.full.min.js`, lokal mitgeliefert, keine CDN-Abhängigkeit).
+- PDF-Erzeugung und -Zusammenführung über [pdf-lib](https://pdf-lib.js.org/)
+  (`lib/pdf-lib.min.js`, ebenfalls lokal mitgeliefert).
 - Die Felderkennung nutzt die Claude-API mit erzwungenem Tool-Use
   (`tool_choice: {type: "tool", name: "extract_invoice"}`), damit die Antwort zuverlässig als
   strukturiertes JSON zurückkommt statt als Freitext.
@@ -133,7 +168,10 @@ laufen ab (max. ~1 Jahr) und müssen dann neu hinterlegt werden.
   bewusst Teil des Workflows.
 - API-Key und Token sind pro Gerät getrennt und müssen auf jedem Gerät einmal eingegeben werden.
 - Ohne aktivierte Synchronisierung sind die Beleglisten pro Gerät getrennt.
-- Fotos werden nicht synchronisiert — sie liegen nur dort, wo sie beim Speichern abgelegt wurden.
-  Auf einem zweiten Gerät erscheint der Beleg mit allen Daten, aber ohne zugehörige Bilddatei.
+- Belege, die vor der Dateisynchronisierung erfasst wurden, haben keine hinterlegte Datei. Sie
+  erscheinen in der Liste mit einem Hinweissymbol; die Datei lässt sich über die Belegansicht
+  nachtragen.
+- Git behält gelöschte Dateien in der Historie. Das Repo wächst also auch dann, wenn Belege
+  gelöscht werden — bei verkleinerten Fotos (typisch 100–400 KB) ist das über Jahre unkritisch.
 - Bei sehr vielen Rechnungen könnte `localStorage` (i.d.R. ~5–10 MB) irgendwann eng werden; die
   Textdaten pro Rechnung sind aber klein, das reicht für tausende Einträge.

@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Rechnungen">
 <title>Rechnungen</title>
 <script src="lib/xlsx.full.min.js"></script>
+<script src="lib/pdf-lib.min.js"></script>
 <style>
   :root {
     --bg: #f7f7f5;
@@ -322,28 +323,46 @@
     font-weight: 680;
   }
 
-  /* ---------- Kategorieverwaltung in den Einstellungen ---------- */
-  .cat-manage { display: flex; flex-wrap: wrap; gap: 7px; }
-  .cat-tag {
-    display: inline-flex; align-items: center; gap: 6px;
+  /* ---------- Belegkarte anklickbar ---------- */
+  .item-main { cursor: pointer; }
+  .item-thumb {
+    flex: 0 0 auto;
+    width: 44px; height: 44px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2) center/cover no-repeat;
+    display: grid; place-items: center;
+    color: var(--text-dim);
+    overflow: hidden;
+  }
+  .item-thumb svg { width: 18px; height: 18px; }
+
+  /* ---------- Lightbox ---------- */
+  .lb-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; padding: 4px 0 14px;
+  }
+  .lb-title { font-weight: 650; font-size: 1rem; }
+  .lb-sub { font-size: .82rem; color: var(--text-dim); margin-top: 2px; }
+  .lb-body {
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 99px;
-    padding: 5px 6px 5px 11px;
-    font-size: .82rem;
-    font-weight: 550;
-  }
-  .cat-tag button {
-    all: unset;
-    cursor: pointer;
-    width: 18px; height: 18px;
+    border-radius: var(--radius-sm);
+    min-height: 200px;
     display: grid; place-items: center;
-    border-radius: 50%;
-    color: var(--text-dim);
+    overflow: hidden;
   }
-  .cat-tag button:hover { background: var(--danger-soft); color: var(--danger); }
-  .cat-tag svg { width: 11px; height: 11px; }
-  .cat-tag.in-use button { display: none; }
+  .lb-body img { width: 100%; height: auto; display: block; }
+  .lb-body iframe { width: 100%; height: 62vh; border: 0; background: #fff; }
+  .lb-note { padding: 32px 18px; text-align: center; color: var(--text-dim); font-size: .88rem; }
+
+  /* ---------- Fortschritt ---------- */
+  .progress {
+    height: 6px; border-radius: 99px;
+    background: var(--surface-2);
+    overflow: hidden; margin-top: 10px;
+  }
+  .progress > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
 
   .item-unsynced {
     display: inline-block;
@@ -466,7 +485,7 @@
         <circle cx="12" cy="13" r="3.5"/>
       </svg>
       <div class="zone-title">Rechnung erfassen</div>
-      <div class="zone-hint">Foto aufnehmen oder Bild auswählen</div>
+      <div class="zone-hint">Foto aufnehmen, Bild oder PDF auswählen</div>
       <div class="actions">
         <button class="btn-primary" id="cameraBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg>
@@ -474,13 +493,18 @@
         </button>
         <button class="btn-secondary" id="pickBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-          Galerie
+          Datei / PDF
         </button>
       </div>
     </div>
 
     <div id="previewWrap" class="preview-wrap hidden">
       <img id="preview" alt="Vorschau der Rechnung">
+      <div id="previewPdf" class="lb-note hidden" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:34px;height:34px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        <div id="previewPdfName" style="margin-top:8px;font-weight:600;color:var(--text)"></div>
+        <div style="margin-top:2px">PDF bereit zum Auslesen</div>
+      </div>
       <button class="preview-remove" id="clearImageBtn" aria-label="Bild entfernen">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
@@ -494,7 +518,8 @@
     </div>
 
     <input type="file" id="fileCamera" accept="image/*" capture="environment" class="hidden">
-    <input type="file" id="filePick" accept="image/*" class="hidden">
+    <input type="file" id="filePick" accept="image/*,application/pdf" class="hidden">
+    <input type="file" id="fileAttach" accept="image/*,application/pdf" class="hidden">
   </section>
 
   <!-- Prüfen -->
@@ -546,9 +571,13 @@
 
     <div class="list" id="invoiceList" style="margin-top:12px"></div>
     <div class="actions" id="archiveActions">
+      <button class="btn-primary" id="reportBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+        Bericht erstellen
+      </button>
       <button class="btn-secondary" id="exportBtn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
-        Excel exportieren
+        Alles als Excel
       </button>
     </div>
     <div id="exportStatus" class="status"></div>
@@ -637,20 +666,58 @@
     </div>
 
     <div class="setting-group">
-      <h3 class="card-title">Kategorien</h3>
-      <div class="card stack">
-        <div class="cat-manage" id="catManage"></div>
-        <button class="btn-secondary" id="addCatBtn">Kategorie hinzufügen</button>
-        <div class="status">Kategorien, die bereits in einem Beleg verwendet werden, lassen sich nicht entfernen. Sie stehen automatisch auf allen Geräten zur Verfügung, sobald der jeweilige Beleg synchronisiert wurde.</div>
-      </div>
-    </div>
-
-    <div class="setting-group">
       <h3 class="card-title">Daten</h3>
       <div class="card stack">
         <button class="btn-danger" id="clearAllBtn">Alle Einträge löschen</button>
         <div class="status">Löscht nur die Liste in diesem Browser. Bereits gespeicherte Fotos und Excel-Dateien bleiben erhalten.</div>
       </div>
+    </div>
+  </aside>
+</div>
+
+<!-- Belegansicht -->
+<div class="backdrop hidden" id="lightboxBackdrop">
+  <aside class="sheet" role="dialog" aria-modal="true">
+    <div class="grabber"></div>
+    <div class="lb-head">
+      <div>
+        <div class="lb-title" id="lbTitle"></div>
+        <div class="lb-sub" id="lbSub"></div>
+      </div>
+      <button class="btn-ghost" id="lbClose">Fertig</button>
+    </div>
+    <div class="lb-body" id="lbBody"></div>
+    <div class="actions" id="lbActions"></div>
+  </aside>
+</div>
+
+<!-- Bericht -->
+<div class="backdrop hidden" id="reportBackdrop">
+  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <h2 id="reportTitle">Bericht erstellen</h2>
+      <button class="btn-ghost" id="reportClose">Schließen</button>
+    </div>
+    <div class="card stack">
+      <div class="field-grid">
+        <div class="field"><label for="repJahr">Jahr</label><select id="repJahr"></select></div>
+        <div class="field"><label for="repMonat">Monat</label><select id="repMonat"></select></div>
+        <div class="field wide"><label for="repKategorie">Kategorie</label><select id="repKategorie"></select></div>
+      </div>
+      <div class="status" id="repInfo"></div>
+      <button class="btn-primary" id="repStart">PDF und Excel erzeugen</button>
+      <div class="progress hidden" id="repProgress"><i></i></div>
+      <div class="status" id="repStatus"></div>
+      <details class="note">
+        <summary>Was wird erzeugt?</summary>
+        <p>Zwei getrennte Dateien: ein <strong>PDF</strong>, das die Originalbelege des gewählten
+        Zeitraums hintereinander enthält (Fotos seitenfüllend auf A4, PDF-Belege mit allen ihren
+        Seiten), und eine <strong>Excel-Datei</strong> mit den Einzelbelegen sowie den Summen je
+        Kategorie für denselben Zeitraum.</p>
+        <p>Ins PDF kommen nur Belege, zu denen eine Datei vorliegt. Bei Belegen ohne hinterlegte
+        Datei lässt sie sich über die Belegansicht nachtragen.</p>
+      </details>
     </div>
   </aside>
 </div>
@@ -664,61 +731,29 @@
   const LS_KEY_API = "rechnungsapp_apikey";
   const LS_KEY_MODEL = "rechnungsapp_model";
   const LS_KEY_INVOICES = "rechnungsapp_invoices";
-  const LS_KEY_CATS = "rechnungsapp_kategorien";
-  const DEFAULT_CATS = ["Mechatronik", "Pension", "HW"];
-  const NEW_CAT_VALUE = "__neue__";
-
   const $ = (id) => document.getElementById(id);
 
-  // ---------- Kategorien ----------
-  let customCats;
-  try {
-    const gespeichert = JSON.parse(localStorage.getItem(LS_KEY_CATS) || "null");
-    customCats = Array.isArray(gespeichert) ? gespeichert : DEFAULT_CATS.slice();
-  } catch (e) {
-    customCats = DEFAULT_CATS.slice();
-  }
+  // ---------- Kategorien (feste Liste) ----------
+  const CATEGORIES = ["Mechatronik", "Pension", "Privat", "HW"];
 
-  function persistCats() { localStorage.setItem(LS_KEY_CATS, JSON.stringify(customCats)); }
-
-  // Eigene Liste plus alles, was in Belegen vorkommt — so tauchen auf einem Gerät
-  // angelegte Kategorien nach dem Sync automatisch auch auf dem anderen auf.
+  // Feste Liste plus etwaige Altwerte aus vorhandenen Belegen, damit bestehende
+  // Zuordnungen sichtbar bleiben und umgestellt werden können.
   function allCategories() {
-    const set = new Set(customCats.filter(Boolean));
+    const set = new Set(CATEGORIES);
     invoices.forEach((i) => { if (i.kategorie) set.add(i.kategorie); });
-    return [...set].sort((a, b) => a.localeCompare(b, "de"));
+    return [...set];
   }
 
-  function categoryInUse(name) {
-    return invoices.some((i) => i.kategorie === name);
-  }
-
-  function addCategory(name) {
-    const clean = String(name || "").trim();
-    if (!clean) return null;
-    const vorhanden = allCategories().find((c) => c.toLowerCase() === clean.toLowerCase());
-    if (vorhanden) return vorhanden;
-    customCats.push(clean);
-    persistCats();
-    return clean;
-  }
-
-  // Options-HTML für ein Kategorie-Auswahlfeld; `withNew` hängt „+ neue Kategorie“ an.
-  function categoryOptionsHtml(value, withNew) {
-    const cats = allCategories();
+  function categoryOptionsHtml(value) {
     const opts = [`<option value=""${!value ? " selected" : ""}>Ohne Kategorie</option>`];
-    cats.forEach((c) => {
+    allCategories().forEach((c) => {
       opts.push(`<option value="${esc(c)}"${c === value ? " selected" : ""}>${esc(c)}</option>`);
     });
-    if (value && !cats.includes(value)) {
-      opts.push(`<option value="${esc(value)}" selected>${esc(value)}</option>`);
-    }
-    if (withNew) opts.push(`<option value="${NEW_CAT_VALUE}">+ neue Kategorie…</option>`);
     return opts.join("");
   }
 
-  function fillCategorySelect(sel, value, withNew) {
-    sel.innerHTML = categoryOptionsHtml(value, withNew);
+  function fillCategorySelect(sel, value) {
+    sel.innerHTML = categoryOptionsHtml(value);
     sel.value = value || "";
   }
 
@@ -823,12 +858,61 @@
   const analyzeStatus = $("analyzeStatus");
   const formPanel = $("formPanel");
 
-  let currentDataUrl = null;
+  // Aktuell erfasste Datei: { blob, typ, name, base64 }
+  let current = null;
+  let previewUrl = null;
+
+  const MAX_EDGE = 1600;      // längste Kante nach dem Verkleinern
+  const JPEG_QUALITY = 0.8;
+  const MAX_PDF_BYTES = 15 * 1024 * 1024;
 
   $("cameraBtn").addEventListener("click", (e) => { e.stopPropagation(); fileCamera.click(); });
   $("pickBtn").addEventListener("click", (e) => { e.stopPropagation(); filePick.click(); });
   fileCamera.addEventListener("change", () => { if (fileCamera.files[0]) handleFile(fileCamera.files[0]); });
   filePick.addEventListener("change", () => { if (filePick.files[0]) handleFile(filePick.files[0]); });
+
+  // Verkleinert Fotos deutlich: begrenzt das Wachstum des Sync-Repos und senkt
+  // gleichzeitig die Bild-Tokens beim Auslesen.
+  async function compressImage(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = () => rej(new Error("Bild konnte nicht gelesen werden"));
+        im.src = url;
+      });
+      const scale = Math.min(1, MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";           // Transparenz sauber nach JPEG überführen
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", JPEG_QUALITY));
+      return blob || file;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function blobToBase64(blob) {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  }
+
+  function base64ToBlob(b64, typ) {
+    const bin = atob(String(b64).replace(/\s/g, ""));
+    return new Blob([Uint8Array.from(bin, (c) => c.charCodeAt(0))], { type: typ });
+  }
 
   dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag"); });
   dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
@@ -841,8 +925,11 @@
   $("clearImageBtn").addEventListener("click", resetImage);
 
   function resetImage() {
-    currentDataUrl = null;
+    current = null;
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
     preview.src = "";
+    preview.classList.add("hidden");
+    $("previewPdf").classList.add("hidden");
     previewWrap.classList.add("hidden");
     dropzone.classList.remove("hidden");
     formPanel.classList.add("hidden");
@@ -851,21 +938,46 @@
     filePick.value = "";
   }
 
-  function handleFile(file) {
-    if (!file.type.startsWith("image/")) {
-      toast("Bitte eine Bilddatei auswählen");
+  async function handleFile(file) {
+    const istPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+    if (!istPdf && !(file.type || "").startsWith("image/")) {
+      toast("Bitte ein Bild oder eine PDF-Datei auswählen");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      currentDataUrl = reader.result;
-      preview.src = currentDataUrl;
+    if (istPdf && file.size > MAX_PDF_BYTES) {
+      toast("PDF ist zu groß (max. 15 MB)");
+      return;
+    }
+
+    try {
+      const blob = istPdf ? file : await compressImage(file);
+      current = {
+        blob,
+        typ: istPdf ? "application/pdf" : "image/jpeg",
+        name: file.name || (istPdf ? "beleg.pdf" : "beleg.jpg"),
+        base64: await blobToBase64(blob)
+      };
+
+      if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+      if (istPdf) {
+        preview.classList.add("hidden");
+        $("previewPdfName").textContent = current.name;
+        $("previewPdf").classList.remove("hidden");
+      } else {
+        previewUrl = URL.createObjectURL(blob);
+        preview.src = previewUrl;
+        preview.classList.remove("hidden");
+        $("previewPdf").classList.add("hidden");
+      }
       previewWrap.classList.remove("hidden");
       dropzone.classList.add("hidden");
       formPanel.classList.add("hidden");
       analyzeStatus.textContent = "";
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      analyzeStatus.textContent = "Datei konnte nicht gelesen werden: " + err.message;
+      analyzeStatus.className = "status err";
+    }
   }
 
   // ---------- Claude Vision ----------
@@ -912,15 +1024,17 @@
       openSettings();
       return;
     }
-    if (!currentDataUrl) return;
+    if (!current) return;
 
     analyzeBtn.disabled = true;
     analyzeStatus.innerHTML = '<span class="spinner"></span>Rechnung wird ausgelesen…';
     analyzeStatus.className = "status";
 
     try {
-      const mediaType = currentDataUrl.substring(5, currentDataUrl.indexOf(";"));
-      const base64Data = currentDataUrl.substring(currentDataUrl.indexOf(",") + 1);
+      // PDFs gehen als document-Block, Fotos als image-Block an die API
+      const quelle = current.typ === "application/pdf"
+        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: current.base64 } }
+        : { type: "image", source: { type: "base64", media_type: current.typ, data: current.base64 } };
 
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -938,7 +1052,7 @@
           messages: [{
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
+              quelle,
               { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol. Ordne die Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu." }
             ]
           }]
@@ -991,25 +1105,9 @@
     f.mwst_betrag.value = x.mwst_betrag ?? "";
     f.gesamt.value = x.gesamtbetrag ?? "";
     f.waehrung.value = x.waehrung || "EUR";
-    fillCategorySelect(f.kategorie, x.kategorie || "", true);
+    fillCategorySelect(f.kategorie, x.kategorie || "");
     f.notizen.value = x.notizen || "";
   }
-
-  // „+ neue Kategorie…“ im Formular
-  let letzteKategorie = "";
-  f.kategorie.addEventListener("change", () => {
-    if (f.kategorie.value !== NEW_CAT_VALUE) {
-      letzteKategorie = f.kategorie.value;
-      return;
-    }
-    const name = prompt("Name der neuen Kategorie:");
-    const angelegt = addCategory(name);
-    fillCategorySelect(f.kategorie, angelegt || letzteKategorie, true);
-    if (angelegt) {
-      renderCatManage();
-      toast(`Kategorie „${angelegt}“ angelegt`);
-    }
-  });
 
   function normalizeDate(d) {
     if (!d) return "";
@@ -1032,24 +1130,54 @@
       .slice(0, 60) || "unbekannt";
   }
 
-  function dataUrlToBlob(dataUrl) {
-    const [head, b64] = dataUrl.split(",");
-    const mime = head.match(/data:(.*?);base64/)[1];
-    const bin = atob(b64);
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    return new Blob([arr], { type: mime });
+  function extFromTyp(typ) {
+    return typ === "application/pdf" ? "pdf" : "jpg";
   }
 
-  function extFromMime(mime) {
-    if (mime.includes("png")) return "png";
-    if (mime.includes("webp")) return "webp";
-    if (mime.includes("heic")) return "heic";
-    return "jpg";
+  // ---------- Lokaler Belegspeicher (IndexedDB) ----------
+  // Hält die Originaldateien auf dem Gerät: als Warteschlange für den Upload und
+  // gleichzeitig als Cache, damit die Belegansicht offline funktioniert.
+  const IDB_NAME = "rechnungsapp";
+  const IDB_STORE = "belege";
+  let idbPromise = null;
+
+  function idb() {
+    if (!idbPromise) {
+      idbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains(IDB_STORE)) {
+            req.result.createObjectStore(IDB_STORE);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    return idbPromise;
   }
+
+  async function idbTx(mode, fn) {
+    const db = await idb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, mode);
+      const store = tx.objectStore(IDB_STORE);
+      let ergebnis;
+      try { ergebnis = fn(store); } catch (e) { reject(e); return; }
+      tx.oncomplete = () => resolve(ergebnis && ergebnis.result !== undefined ? ergebnis.result : ergebnis);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+
+  const belegStore = {
+    async put(id, eintrag) { return idbTx("readwrite", (s) => s.put(eintrag, id)); },
+    async get(id) { return idbTx("readonly", (s) => s.get(id)); },
+    async del(id) { return idbTx("readwrite", (s) => s.delete(id)); }
+  };
 
   async function saveInvoice() {
-    if (!currentDataUrl) return;
+    if (!current) return;
     saveInvoiceBtn.disabled = true;
     saveStatus.innerHTML = '<span class="spinner"></span>Speichere…';
     saveStatus.className = "status";
@@ -1057,8 +1185,7 @@
     try {
       const datum = f.datum.value || "unbekannt-datum";
       const lieferant = f.lieferant.value || "unbekannt";
-      const mime = currentDataUrl.match(/data:(.*?);base64/)[1];
-      const ext = extFromMime(mime);
+      const ext = extFromTyp(current.typ);
       const base = `${sanitizeForFilename(datum)}_${sanitizeForFilename(lieferant)}`;
 
       const existing = new Set(invoices.map((i) => i.archiveFilename));
@@ -1066,21 +1193,22 @@
       let n = 2;
       while (existing.has(archiveFilename)) archiveFilename = `${base}_${n++}.${ext}`;
 
-      const blob = dataUrlToBlob(currentDataUrl);
-      let via = "download";
+      const blob = current.blob;
+      const typ = current.typ;
+
+      // Archivordner (Desktop) weiterhin bedienen; heruntergeladen wird nur noch,
+      // wenn es weder Ordner noch Sync gibt — sonst liegt die Datei ohnehin im Repo.
+      let via = "lokal";
       if (dirHandle) {
-        try {
-          await writeFileToDir(archiveFilename, blob);
-          via = "ordner";
-        } catch (e) {
-          console.warn("Ordner-Schreibzugriff fehlgeschlagen:", e);
-          downloadBlob(archiveFilename, blob);
-        }
-      } else {
+        try { await writeFileToDir(archiveFilename, blob); via = "ordner"; }
+        catch (e) { console.warn("Ordner-Schreibzugriff fehlgeschlagen:", e); downloadBlob(archiveFilename, blob); via = "download"; }
+      } else if (!syncEnabled()) {
         downloadBlob(archiveFilename, blob);
+        via = "download";
       }
 
       const record = {
+        belegTyp: typ,
         id: Date.now() + "_" + Math.random().toString(36).slice(2, 8),
         datum: f.datum.value,
         lieferant: f.lieferant.value,
@@ -1097,13 +1225,26 @@
       };
       invoices.push(record);
       persist();
+
+      // Originaldatei lokal ablegen (Upload-Warteschlange + Offline-Cache)
+      try {
+        await belegStore.put(record.id, { blob, typ, hochgeladen: false });
+      } catch (e) {
+        console.warn("Belegdatei konnte lokal nicht abgelegt werden:", e);
+        if (via === "lokal") { downloadBlob(archiveFilename, blob); via = "download"; }
+      }
+
       render();
 
       if (dirHandle) await exportExcel(true);
       if (syncEnabled()) syncNow({ silent: true });
 
       saveStatus.textContent = "";
-      toast(via === "ordner" ? "Gespeichert und im Archivordner abgelegt" : "Gespeichert — Foto wurde heruntergeladen");
+      toast(
+        via === "ordner" ? "Gespeichert und im Archivordner abgelegt"
+        : via === "download" ? "Gespeichert — Datei wurde heruntergeladen"
+        : "Gespeichert"
+      );
       resetImage();
     } catch (err) {
       console.error(err);
@@ -1219,10 +1360,6 @@
   // ---------- Gesamtdarstellung ----------
   function render() {
     renderFilters();
-    // Formular-Dropdown mitziehen, falls währenddessen eine Kategorie dazukam
-    if (f.kategorie.value !== NEW_CAT_VALUE) {
-      fillCategorySelect(f.kategorie, f.kategorie.value, true);
-    }
     const liste = getFiltered();
 
     const total = liste.reduce((s, i) => s + (i.gesamtbetrag || 0), 0);
@@ -1251,16 +1388,25 @@
         inv.rechnungsnummer || null,
         inv.mwst_betrag != null ? "MwSt " + fmtMoney.format(inv.mwst_betrag) : null
       ].filter(Boolean).join(" · ");
+      const hatDatei = !!(inv.belegTyp || inv.belegPfad);
+      const thumb = hatDatei
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${
+            inv.belegTyp === "application/pdf"
+              ? '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>'
+              : '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'
+          }</svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 8v5M12 16.5v.01"/><circle cx="12" cy="12" r="9"/></svg>`;
       return `
         <div class="item">
-          <div class="item-main">
+          <div class="item-thumb" data-open-id="${inv.id}" title="${hatDatei ? "Beleg ansehen" : "Keine Datei hinterlegt"}">${thumb}</div>
+          <div class="item-main" data-open-id="${inv.id}">
             <div class="item-top">
               <span class="item-name">${esc(inv.lieferant || "Unbekannt")}</span>
               <span class="item-amount">${inv.gesamtbetrag != null ? fmtMoney.format(inv.gesamtbetrag) : "—"}</span>
             </div>
             <div class="item-meta">${syncEnabled() && (!inv._path || inv._dirty) ? '<span class="item-unsynced" title="Noch nicht synchronisiert"></span>' : ""}${esc(meta)}</div>
             <select class="cat-select${inv.kategorie ? "" : " is-empty"}" data-cat-id="${inv.id}" aria-label="Kategorie">
-              ${categoryOptionsHtml(inv.kategorie || "", true)}
+              ${categoryOptionsHtml(inv.kategorie || "")}
             </select>
           </div>
           <button class="item-del" data-id="${inv.id}" aria-label="Eintrag löschen">
@@ -1280,19 +1426,19 @@
     const rec = invoices.find((i) => i.id === sel.getAttribute("data-cat-id"));
     if (!rec) return;
 
-    let wert = sel.value;
-    if (wert === NEW_CAT_VALUE) {
-      const angelegt = addCategory(prompt("Name der neuen Kategorie:"));
-      if (!angelegt) { render(); return; }
-      wert = angelegt;
-      renderCatManage();
-    }
-
-    rec.kategorie = wert;
+    rec.kategorie = sel.value;
     rec._dirty = true;
     persist();
     render();
     if (syncEnabled()) syncNow({ silent: true });
+  });
+
+  // Klick auf die Belegkarte öffnet die Belegansicht
+  listEl.addEventListener("click", (e) => {
+    if (e.target.closest("select") || e.target.closest("button")) return;
+    const ziel = e.target.closest("[data-open-id]");
+    if (!ziel) return;
+    openLightbox(ziel.getAttribute("data-open-id"));
   });
 
   listEl.addEventListener("click", (e) => {
@@ -1304,41 +1450,7 @@
     persist();
     render();
     toast("Eintrag gelöscht");
-    if (rec && rec._path) queueRemoteDelete(rec);
-  });
-
-  // ---------- Kategorieverwaltung (Einstellungen) ----------
-  function renderCatManage() {
-    const box = $("catManage");
-    const cats = allCategories();
-    if (cats.length === 0) {
-      box.innerHTML = '<div class="status">Noch keine Kategorien angelegt.</div>';
-      return;
-    }
-    box.innerHTML = cats.map((c) => {
-      const benutzt = categoryInUse(c);
-      return `<span class="cat-tag${benutzt ? " in-use" : ""}">${esc(c)}<button data-cat="${esc(c)}" aria-label="Kategorie entfernen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>`;
-    }).join("");
-  }
-
-  $("catManage").addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-cat]");
-    if (!btn) return;
-    const name = btn.getAttribute("data-cat");
-    if (categoryInUse(name)) { toast("Kategorie wird noch verwendet"); return; }
-    customCats = customCats.filter((c) => c !== name);
-    persistCats();
-    renderCatManage();
-    render();
-    toast(`Kategorie „${name}“ entfernt`);
-  });
-
-  $("addCatBtn").addEventListener("click", () => {
-    const angelegt = addCategory(prompt("Name der neuen Kategorie:"));
-    if (!angelegt) return;
-    renderCatManage();
-    render();
-    toast(`Kategorie „${angelegt}“ angelegt`);
+    if (rec) queueRemoteDelete(rec);
   });
 
   $("clearAllBtn").addEventListener("click", () => {
@@ -1347,7 +1459,7 @@
       ? "Wirklich alle erfassten Rechnungen löschen?\n\nDa die Synchronisierung aktiv ist, werden sie auch im Daten-Repo und damit auf allen verbundenen Geräten entfernt."
       : "Wirklich alle erfassten Rechnungen aus der Liste löschen?";
     if (!confirm(msg)) return;
-    const removed = invoices.filter((i) => i._path);
+    const removed = invoices.slice();
     invoices = [];
     persist();
     render();
@@ -1391,6 +1503,7 @@
   const LS_KEY_LASTSYNC = "rechnungsapp_lastsync";
   const LS_KEY_PENDING = "rechnungsapp_pending_deletes";
   const SYNC_DIR = "daten";
+  const BELEG_DIR = "belege";
 
   let syncCfg = { owner: "", repo: "", token: "" };
   try { Object.assign(syncCfg, JSON.parse(localStorage.getItem(LS_KEY_SYNC) || "{}")); } catch (e) { /* ignoriert */ }
@@ -1532,6 +1645,15 @@
     return b64decode(res.data.content || "");
   }
 
+  // Binärdateien werden über die Blobs-API gelesen: die Contents-API liefert den
+  // Inhalt nur bis 1 MB, die Blobs-API bis 100 MB.
+  async function ghReadBlobBySha(sha) {
+    const res = await ghRequest("GET", repoUrl("/git/blobs/" + encodeURIComponent(sha)));
+    if (!res.ok) throw new Error(ghError(res));
+    if (res.data.encoding !== "base64") throw new Error("Unerwartete Kodierung: " + res.data.encoding);
+    return res.data.content;
+  }
+
   async function ghCurrentSha(path) {
     const res = await ghRequest("GET", contentsUrl(path));
     if (res.status === 404) return null;
@@ -1539,8 +1661,9 @@
     return res.data.sha || null;
   }
 
-  async function ghWriteFile(path, text, sha, message) {
-    const payload = { message, content: b64encode(text) };
+  // `base64` erlaubt das Schreiben beliebiger Binärdateien statt Text.
+  async function ghWriteFile(path, text, sha, message, base64) {
+    const payload = { message, content: base64 != null ? base64 : b64encode(text) };
     if (sha) payload.sha = sha;
     let res = await ghRequest("PUT", contentsUrl(path), payload);
 
@@ -1594,8 +1717,12 @@
   }
 
   function queueRemoteDelete(rec) {
-    if (!rec._path) return;
-    pendingDeletes.push({ path: rec._path, sha: rec._sha || null });
+    belegStore.del(rec.id).catch(() => { /* lokaler Cache, unkritisch */ });
+    const pfade = [];
+    if (rec._path) pfade.push({ path: rec._path, sha: rec._sha || null });
+    if (rec.belegPfad) pfade.push({ path: rec.belegPfad, sha: null });
+    if (!pfade.length) return;
+    pendingDeletes.push(...pfade);
     persistPending();
     if (syncEnabled()) syncNow({ silent: true });
   }
@@ -1656,6 +1783,7 @@
 
     try {
       const tree = await ghTree();
+      const alleDateien = new Map(tree.map((e) => [e.path, e.sha]));
       const remote = new Map(
         tree.filter((e) => e.path.startsWith(SYNC_DIR + "/") && e.path.endsWith(".json"))
             .map((e) => [e.path, e.sha])
@@ -1664,10 +1792,11 @@
       // 1. Offene Löschungen nachziehen (z.B. offline gelöscht)
       const stillPending = [];
       for (const p of pendingDeletes) {
-        const sha = remote.get(p.path) || p.sha;
-        if (!remote.has(p.path)) { continue; }  // remote bereits weg
+        const sha = alleDateien.get(p.path) || p.sha;
+        if (!alleDateien.has(p.path)) { continue; }  // remote bereits weg
         try {
           await ghDeleteFile(p.path, sha, "Beleg gelöscht");
+          alleDateien.delete(p.path);
           remote.delete(p.path);
         } catch (e) {
           stillPending.push(p);
@@ -1675,6 +1804,30 @@
       }
       pendingDeletes = stillPending;
       persistPending();
+
+      // 1b. Noch nicht hochgeladene Originalbelege übertragen. Das passiert vor dem
+      //     JSON, damit die Datenzeile nie auf eine fehlende Datei verweist.
+      for (const inv of invoices) {
+        if (inv.belegPfad && alleDateien.has(inv.belegPfad)) continue;
+        let eintrag = null;
+        try { eintrag = await belegStore.get(inv.id); } catch (e) { /* kein lokaler Speicher */ }
+        if (!eintrag || !eintrag.blob) continue;
+
+        const pfad = `${BELEG_DIR}/${inv.id}.${extFromTyp(eintrag.typ)}`;
+        try {
+          const b64 = await blobToBase64(eintrag.blob);
+          await ghWriteFile(pfad, null, alleDateien.get(pfad), `Belegdatei: ${inv.lieferant || ""}`.trim(), b64);
+          alleDateien.set(pfad, true);
+          if (inv.belegPfad !== pfad || inv.belegTyp !== eintrag.typ) {
+            inv.belegPfad = pfad;
+            inv.belegTyp = eintrag.typ;
+          }
+          inv._dirty = true;
+          await belegStore.put(inv.id, { ...eintrag, hochgeladen: true });
+        } catch (e) {
+          console.warn("Belegdatei konnte nicht hochgeladen werden:", pfad, e);
+        }
+      }
 
       // 2. Neue Belege hochladen (deckt auch die Erstmigration ab) und lokal geänderte
       //    Belege (z.B. nachträglich gesetzte Kategorie) aktualisieren.
@@ -1716,7 +1869,20 @@
         if (idx >= 0) invoices[idx] = rec; else invoices.push(rec);
       }
 
-      // 4. Lokal entfernen, was remote gelöscht wurde
+      // 4. Lokal entfernen, was remote gelöscht wurde.
+      //    Sicherung: Verschwindet auf einmal ein Großteil der Belege, ist das eher ein
+      //    falsches Repo oder ein Serverproblem als eine echte Löschung — dann lieber
+      //    nichts wegwerfen und den Nutzer informieren.
+      const zuEntfernen = invoices.filter((i) => i._path && !remote.has(i._path));
+      const verdaechtig = zuEntfernen.length >= Math.max(3, invoices.length * 0.5);
+      if (zuEntfernen.length && verdaechtig) {
+        console.warn("Massenlöschung verhindert:", zuEntfernen.length, "Belege fehlen im Repo");
+        sortInvoices();
+        persist();
+        render();
+        setSyncState("error", `${zuEntfernen.length} Belege fehlen im Repo — lokal zur Sicherheit behalten`);
+        return;
+      }
       invoices = invoices.filter((i) => !i._path || remote.has(i._path));
 
       sortInvoices();
@@ -1781,6 +1947,13 @@
       }
     }
 
+    // Bei einem Wechsel auf ein anderes Repo zeigen die gespeicherten Pfade ins Leere.
+    // Sie werden zurückgesetzt, damit alles neu hochgeladen statt als „gelöscht“ gewertet wird.
+    if (previous.owner && (previous.owner !== owner || previous.repo !== repo)) {
+      invoices.forEach((i) => { delete i._path; delete i._sha; delete i.belegPfad; });
+      persist();
+    }
+
     persistSyncCfg();
     refreshSyncSettingsUi();
     render();
@@ -1816,10 +1989,330 @@
     if (age > 60000) syncNow({ silent: true });
   });
 
+  // ---------- Belegdateien beschaffen ----------
+  // Erst lokaler Speicher, sonst aus dem Repo nachladen und dabei cachen.
+  async function getBelegBlob(inv, shaMap) {
+    try {
+      const eintrag = await belegStore.get(inv.id);
+      if (eintrag && eintrag.blob) return { blob: eintrag.blob, typ: eintrag.typ || inv.belegTyp };
+    } catch (e) { /* kein lokaler Speicher verfügbar */ }
+
+    if (!inv.belegPfad || !syncEnabled()) return null;
+
+    let sha = shaMap ? shaMap.get(inv.belegPfad) : null;
+    if (!sha) {
+      const tree = await ghTree();
+      const treffer = tree.find((e) => e.path === inv.belegPfad);
+      if (!treffer) return null;
+      sha = treffer.sha;
+    }
+    const typ = inv.belegTyp || (/\.pdf$/i.test(inv.belegPfad) ? "application/pdf" : "image/jpeg");
+    const blob = base64ToBlob(await ghReadBlobBySha(sha), typ);
+    try { await belegStore.put(inv.id, { blob, typ, hochgeladen: true }); } catch (e) { /* Cache optional */ }
+    return { blob, typ };
+  }
+
+  // ---------- Belegansicht ----------
+  const lbBackdrop = $("lightboxBackdrop");
+  let lbInvoiceId = null;
+  let lbUrl = null;
+
+  function closeLightbox() {
+    lbBackdrop.classList.add("hidden");
+    $("lbBody").innerHTML = "";
+    if (lbUrl) { URL.revokeObjectURL(lbUrl); lbUrl = null; }
+    lbInvoiceId = null;
+  }
+
+  $("lbClose").addEventListener("click", closeLightbox);
+  lbBackdrop.addEventListener("click", (e) => { if (e.target === lbBackdrop) closeLightbox(); });
+
+  async function openLightbox(id) {
+    const inv = invoices.find((i) => i.id === id);
+    if (!inv) return;
+    lbInvoiceId = id;
+
+    $("lbTitle").textContent = inv.lieferant || "Unbekannt";
+    $("lbSub").textContent = [
+      inv.datum ? new Date(inv.datum + "T00:00:00").toLocaleDateString("de-DE") : "ohne Datum",
+      inv.gesamtbetrag != null ? fmtMoney.format(inv.gesamtbetrag) : null,
+      inv.kategorie || "ohne Kategorie"
+    ].filter(Boolean).join(" · ");
+
+    lbBackdrop.classList.remove("hidden");
+    $("lbBody").innerHTML = '<div class="lb-note"><span class="spinner"></span>Beleg wird geladen…</div>';
+    $("lbActions").innerHTML = "";
+
+    try {
+      const datei = await getBelegBlob(inv);
+      if (!datei) {
+        $("lbBody").innerHTML = '<div class="lb-note">Zu diesem Beleg ist keine Datei hinterlegt.<br>Das betrifft Belege, die vor der Dateisynchronisierung erfasst wurden.</div>';
+        $("lbActions").innerHTML = '<button class="btn-primary" id="lbAttach">Datei hinzufügen</button>';
+        $("lbAttach").addEventListener("click", () => $("fileAttach").click());
+        return;
+      }
+
+      if (lbUrl) URL.revokeObjectURL(lbUrl);
+      lbUrl = URL.createObjectURL(datei.blob);
+      const dateiname = `${sanitizeForFilename(inv.datum || "beleg")}_${sanitizeForFilename(inv.lieferant || "")}.${extFromTyp(datei.typ)}`;
+
+      $("lbBody").innerHTML = datei.typ === "application/pdf"
+        ? `<iframe src="${lbUrl}" title="Beleg-PDF"></iframe>`
+        : `<img src="${lbUrl}" alt="Beleg">`;
+
+      $("lbActions").innerHTML =
+        '<button class="btn-secondary" id="lbOpen">In neuem Tab öffnen</button>' +
+        '<button class="btn-secondary" id="lbDownload">Herunterladen</button>';
+      $("lbOpen").addEventListener("click", () => window.open(lbUrl, "_blank"));
+      $("lbDownload").addEventListener("click", () => downloadBlob(dateiname, datei.blob));
+    } catch (err) {
+      console.error(err);
+      $("lbBody").innerHTML = `<div class="lb-note">Beleg konnte nicht geladen werden:<br>${esc(err.message)}</div>`;
+    }
+  }
+
+  // Datei zu einem bestehenden Beleg nachtragen
+  $("fileAttach").addEventListener("change", async () => {
+    const file = $("fileAttach").files[0];
+    const inv = invoices.find((i) => i.id === lbInvoiceId);
+    $("fileAttach").value = "";
+    if (!file || !inv) return;
+
+    const istPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+    if (!istPdf && !(file.type || "").startsWith("image/")) { toast("Bitte ein Bild oder PDF wählen"); return; }
+    if (istPdf && file.size > MAX_PDF_BYTES) { toast("PDF ist zu groß (max. 15 MB)"); return; }
+
+    try {
+      const blob = istPdf ? file : await compressImage(file);
+      const typ = istPdf ? "application/pdf" : "image/jpeg";
+      await belegStore.put(inv.id, { blob, typ, hochgeladen: false });
+      inv.belegTyp = typ;
+      inv._dirty = true;
+      persist();
+      render();
+      toast("Datei hinterlegt");
+      if (syncEnabled()) syncNow({ silent: true });
+      openLightbox(inv.id);
+    } catch (err) {
+      console.error(err);
+      toast("Datei konnte nicht gespeichert werden");
+    }
+  });
+
+  // ---------- Bericht ----------
+  const repBackdrop = $("reportBackdrop");
+
+  function zeitraumLabel(jahr, monat) {
+    if (jahr && monat) return `${MONATE[parseInt(monat, 10) - 1]} ${jahr}`;
+    if (jahr) return `Jahr ${jahr}`;
+    if (monat) return `${MONATE[parseInt(monat, 10) - 1]} (alle Jahre)`;
+    return "Gesamter Zeitraum";
+  }
+
+  function zeitraumDateiname(jahr, monat) {
+    if (jahr && monat) return `${jahr}-${monat}`;
+    if (jahr) return jahr;
+    if (monat) return `monat-${monat}`;
+    return "gesamt";
+  }
+
+  function reportAuswahl() {
+    const jahr = $("repJahr").value;
+    const monat = $("repMonat").value;
+    const kategorie = $("repKategorie").value;
+    const liste = invoices.filter((inv) => {
+      const p = invPeriod(inv);
+      if (jahr || monat) {
+        if (!p) return false;
+        if (jahr && p.jahr !== jahr) return false;
+        if (monat && p.monat !== monat) return false;
+      }
+      if (kategorie === "__ohne__") return !inv.kategorie;
+      if (kategorie && inv.kategorie !== kategorie) return false;
+      return true;
+    });
+    return { jahr, monat, kategorie, liste };
+  }
+
+  function updateReportInfo() {
+    const { liste } = reportAuswahl();
+    const mitDatei = liste.filter((i) => i.belegPfad || i.belegTyp).length;
+    const summe = liste.reduce((s, i) => s + (i.gesamtbetrag || 0), 0);
+    $("repInfo").textContent = liste.length === 0
+      ? "Keine Belege in dieser Auswahl."
+      : `${liste.length} ${liste.length === 1 ? "Beleg" : "Belege"} · ${fmtMoney.format(summe)} · ${mitDatei} mit hinterlegter Datei`;
+    $("repStart").disabled = liste.length === 0;
+  }
+
+  function openReport() {
+    const jahre = [...new Set(invoices.map((i) => (invPeriod(i) || {}).jahr).filter(Boolean))].sort().reverse();
+    $("repJahr").innerHTML = ['<option value="">Alle Jahre</option>']
+      .concat(jahre.map((j) => `<option value="${j}"${j === filterJahr ? " selected" : ""}>${j}</option>`)).join("");
+    $("repMonat").innerHTML = ['<option value="">Alle Monate</option>']
+      .concat(MONATE.map((name, idx) => {
+        const wert = String(idx + 1).padStart(2, "0");
+        return `<option value="${wert}"${wert === filterMonat ? " selected" : ""}>${name}</option>`;
+      })).join("");
+    $("repKategorie").innerHTML = ['<option value="">Alle Kategorien</option>']
+      .concat(allCategories().map((c) => `<option value="${esc(c)}">${esc(c)}</option>`))
+      .concat(['<option value="__ohne__">Ohne Kategorie</option>']).join("");
+
+    $("repStatus").textContent = "";
+    $("repProgress").classList.add("hidden");
+    updateReportInfo();
+    repBackdrop.classList.remove("hidden");
+  }
+
+  $("reportBtn").addEventListener("click", openReport);
+  $("reportClose").addEventListener("click", () => repBackdrop.classList.add("hidden"));
+  repBackdrop.addEventListener("click", (e) => { if (e.target === repBackdrop) repBackdrop.classList.add("hidden"); });
+  ["repJahr", "repMonat", "repKategorie"].forEach((id) => $(id).addEventListener("change", updateReportInfo));
+
+  async function liefereDatei(name, blob) {
+    if (dirHandle) {
+      try { await writeFileToDir(name, blob); return "ordner"; }
+      catch (e) { console.warn("Ordner-Schreibzugriff fehlgeschlagen:", e); }
+    }
+    downloadBlob(name, blob);
+    return "download";
+  }
+
+  function berichtExcel(liste, titel) {
+    const headers = ["Datum", "Lieferant", "Rechnungsnummer", "Kategorie", "Nettobetrag", "MwSt-Satz (%)", "MwSt-Betrag", "Gesamtbetrag", "Währung", "Notizen"];
+    const rows = liste.map((i) => [
+      i.datum || "", i.lieferant || "", i.rechnungsnummer || "", i.kategorie || "Ohne Kategorie",
+      i.nettobetrag, i.mwst_satz, i.mwst_betrag, i.gesamtbetrag, i.waehrung || "", i.notizen || ""
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([[titel], [], headers, ...rows]);
+    ws["!cols"] = [{ wch: 12 }, { wch: 24 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 9 }, { wch: 24 }];
+
+    const gruppen = new Map();
+    liste.forEach((i) => {
+      const key = i.kategorie || "Ohne Kategorie";
+      const g = gruppen.get(key) || { anzahl: 0, netto: 0, mwst: 0, gesamt: 0 };
+      g.anzahl += 1;
+      g.netto += i.nettobetrag || 0;
+      g.mwst += i.mwst_betrag || 0;
+      g.gesamt += i.gesamtbetrag || 0;
+      gruppen.set(key, g);
+    });
+    const zeilen = [...gruppen.entries()].sort((a, b) => b[1].gesamt - a[1].gesamt);
+    const summe = (feld) => zeilen.reduce((s, [, g]) => s + g[feld], 0);
+    const ws2 = XLSX.utils.aoa_to_sheet([
+      [titel], [],
+      ["Kategorie", "Anzahl", "Netto", "MwSt", "Gesamt"],
+      ...zeilen.map(([name, g]) => [name, g.anzahl, g.netto, g.mwst, g.gesamt]),
+      [],
+      ["Summe", liste.length, summe("netto"), summe("mwst"), summe("gesamt")]
+    ]);
+    ws2["!cols"] = [{ wch: 20 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 13 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws2, "Auswertung");
+    XLSX.utils.book_append_sheet(wb, ws, "Belege");
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    return new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+
+  async function berichtPdf(liste, setzeFortschritt) {
+    const { PDFDocument } = PDFLib;
+    const doc = await PDFDocument.create();
+    const A4 = [595.28, 841.89];
+    const rand = 28;
+
+    // Blob-shas einmalig holen, statt pro Beleg
+    let shaMap = null;
+    if (syncEnabled() && liste.some((i) => i.belegPfad)) {
+      try { shaMap = new Map((await ghTree()).map((e) => [e.path, e.sha])); } catch (e) { /* dann eben einzeln */ }
+    }
+
+    let eingefuegt = 0;
+    let fehlend = 0;
+    for (let idx = 0; idx < liste.length; idx++) {
+      const inv = liste[idx];
+      setzeFortschritt(idx, liste.length);
+      let datei = null;
+      try { datei = await getBelegBlob(inv, shaMap); } catch (e) { console.warn("Beleg nicht ladbar:", inv.id, e); }
+      if (!datei) { fehlend++; continue; }
+
+      try {
+        const bytes = new Uint8Array(await datei.blob.arrayBuffer());
+        if (datei.typ === "application/pdf") {
+          const quelle = await PDFDocument.load(bytes, { ignoreEncryption: true });
+          const seiten = await doc.copyPages(quelle, quelle.getPageIndices());
+          seiten.forEach((s) => doc.addPage(s));
+        } else {
+          let bild;
+          try { bild = await doc.embedJpg(bytes); }
+          catch (e) { bild = await doc.embedPng(bytes); }
+          const seite = doc.addPage(A4);
+          const skala = Math.min((A4[0] - rand * 2) / bild.width, (A4[1] - rand * 2) / bild.height);
+          const b = bild.width * skala;
+          const h = bild.height * skala;
+          seite.drawImage(bild, { x: (A4[0] - b) / 2, y: (A4[1] - h) / 2, width: b, height: h });
+        }
+        eingefuegt++;
+      } catch (e) {
+        console.warn("Beleg konnte nicht ins PDF übernommen werden:", inv.id, e);
+        fehlend++;
+      }
+    }
+    setzeFortschritt(liste.length, liste.length);
+    if (eingefuegt === 0) return { blob: null, eingefuegt, fehlend };
+    const bytes = await doc.save();
+    return { blob: new Blob([bytes], { type: "application/pdf" }), eingefuegt, fehlend };
+  }
+
+  $("repStart").addEventListener("click", async () => {
+    const { jahr, monat, kategorie, liste } = reportAuswahl();
+    if (!liste.length) return;
+
+    const btn = $("repStart");
+    btn.disabled = true;
+    const balken = $("repProgress");
+    const fuellung = balken.querySelector("i");
+    balken.classList.remove("hidden");
+    fuellung.style.width = "0%";
+    $("repStatus").innerHTML = '<span class="spinner"></span>Bericht wird erstellt…';
+    $("repStatus").className = "status";
+
+    const katTeil = kategorie === "__ohne__" ? "_ohne-kategorie" : kategorie ? "_" + sanitizeForFilename(kategorie).toLowerCase() : "";
+    const basis = `bericht_${zeitraumDateiname(jahr, monat)}${katTeil}`;
+    const titel = `Rechnungsbericht — ${zeitraumLabel(jahr, monat)}${kategorie ? " · " + (kategorie === "__ohne__" ? "Ohne Kategorie" : kategorie) : ""}`;
+
+    try {
+      const excelBlob = berichtExcel(liste, titel);
+      const pdf = await berichtPdf(liste, (i, n) => {
+        fuellung.style.width = Math.round((i / Math.max(n, 1)) * 100) + "%";
+        $("repStatus").innerHTML = `<span class="spinner"></span>Belege werden zusammengeführt (${Math.min(i + 1, n)}/${n})…`;
+      });
+
+      let ziel = "download";
+      if (pdf.blob) ziel = await liefereDatei(`${basis}.pdf`, pdf.blob);
+      await new Promise((r) => setTimeout(r, 600));   // zwei Downloads nacheinander
+      ziel = await liefereDatei(`${basis}.xlsx`, excelBlob);
+
+      const hinweis = pdf.blob
+        ? `PDF mit ${pdf.eingefuegt} ${pdf.eingefuegt === 1 ? "Beleg" : "Belegen"} und Excel erstellt.`
+        : "Excel erstellt. Für das PDF lag zu keinem Beleg eine Datei vor.";
+      const fehlendText = pdf.fehlend ? ` ${pdf.fehlend} ohne Datei übersprungen.` : "";
+      $("repStatus").textContent = hinweis + fehlendText +
+        (ziel === "ordner" ? " Abgelegt im Archivordner." : "");
+      $("repStatus").className = "status ok";
+      toast("Bericht erstellt");
+    } catch (err) {
+      console.error(err);
+      $("repStatus").textContent = "Fehler: " + err.message;
+      $("repStatus").className = "status err";
+    } finally {
+      btn.disabled = false;
+      balken.classList.add("hidden");
+    }
+  });
+
   // ---------- Start ----------
   sortInvoices();
-  fillCategorySelect(f.kategorie, "", true);
-  renderCatManage();
+  fillCategorySelect(f.kategorie, "");
   render();
   refreshSyncSettingsUi();
   setSyncState("idle");
