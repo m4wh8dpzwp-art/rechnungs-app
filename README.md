@@ -43,6 +43,25 @@ Daten löschen) steckt hinter dem Zahnrad oben rechts.
    - Die Ordnerverbindung gilt pro Browser-Sitzung (Tab-Neuladen erfordert erneutes Auswählen).
 4. "Kamera" bzw. "Galerie" antippen, "Rechnung auslesen" klicken, Felder prüfen, "Speichern".
 
+## Kategorien und Auswertung
+
+Jede Rechnung wird einer Kategorie zugeordnet. Vorgegeben sind **Mechatronik**, **Pension** und
+**HW**; die Liste lässt sich jederzeit erweitern.
+
+- **Automatischer Vorschlag:** Beim Auslesen bekommt Claude die aktuelle Kategorienliste als feste
+  Auswahl vorgegeben und ordnet die Rechnung der am besten passenden zu. Der Vorschlag ist im
+  Formular vorausgewählt und vor dem Speichern änderbar.
+- **Neue Kategorie anlegen:** entweder im Auswahlfeld über "+ neue Kategorie…" (im Formular und
+  direkt in jeder Belegkarte) oder unter Zahnrad → "Kategorien". Kategorien, die bereits in einem
+  Beleg verwendet werden, lassen sich nicht löschen.
+- **Nachträglich zuordnen:** Jede Belegkarte in der Liste hat ein Kategorie-Feld. Belege ohne
+  Kategorie sind an der gestrichelten Umrandung erkennbar. Die Änderung wird sofort gespeichert
+  und – bei aktivem Sync – ins Repo übertragen.
+- **Auswertung:** Über der Belegliste stehen zwei Filter (Jahr und Monat). Sie wirken auf die
+  Kennzahlen, die Auswertung und die Liste. Die Auswertung zeigt pro Kategorie Summe, Anzahl,
+  MwSt-Betrag und Anteil, sortiert nach Summe, mit Gesamtzeile.
+- Der Excel-Export enthält weiterhin **alle** Belege samt Kategorie, unabhängig vom Filter.
+
 ## Synchronisierung zwischen Geräten (optional)
 
 Ohne Einrichtung bleiben alle Daten nur auf dem jeweiligen Gerät. Wer dieselbe Belegliste auf
@@ -68,6 +87,9 @@ abgelegt.
 
 - Pro Beleg wird eine eigene Datei geschrieben (`daten/2026-07-15_lieferant_a1b2.json`). Weil
   zwei Geräte nie dieselbe Datei anfassen, entstehen beim parallelen Erfassen keine Konflikte.
+- Die Datei enthält alle Felder des Belegs einschließlich der Kategorie. Wird eine Kategorie
+  nachträglich geändert, wird dieselbe Datei aktualisiert (kein zweiter Eintrag). Dadurch stehen
+  auf einem Gerät neu angelegte Kategorien nach dem Abgleich auch auf dem anderen zur Verfügung.
 - Beim Laden holt die App die Dateiliste über die Git-Trees-API und lädt nur Dateien, deren
   Inhalt sich geändert hat; `localStorage` dient als lokaler Cache.
 - Schreibkonflikte (HTTP 409/422) werden erkannt und automatisch mit dem aktuellen Stand

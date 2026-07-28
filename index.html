@@ -271,6 +271,80 @@
 
   .empty { text-align: center; color: var(--text-dim); padding: 24px 12px; font-size: .9rem; }
 
+  /* ---------- Zeitraum-Filter ---------- */
+  .period {
+    display: flex; gap: 8px; margin-top: 12px;
+  }
+  .period select {
+    flex: 1;
+    font-size: .85rem;
+    padding: 9px 10px;
+    background: var(--surface);
+  }
+
+  /* ---------- Kategorie-Auswahl in der Belegkarte ---------- */
+  .cat-select {
+    width: auto;
+    max-width: 100%;
+    margin-top: 7px;
+    font-size: .75rem;
+    font-weight: 600;
+    padding: 4px 9px;
+    border-radius: 99px;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--accent);
+  }
+  .cat-select.is-empty {
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--border-strong);
+    color: var(--text-dim);
+  }
+
+  /* ---------- Auswertung ---------- */
+  .an-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .an-row:last-of-type { border-bottom: none; }
+  .an-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .an-name { font-weight: 620; font-size: .92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .an-sum { font-weight: 650; white-space: nowrap; }
+  .an-sub { font-size: .76rem; color: var(--text-dim); margin-top: 1px; }
+  .an-bar {
+    height: 5px; border-radius: 99px;
+    background: var(--surface-2);
+    margin-top: 7px; overflow: hidden;
+  }
+  .an-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+  .an-total {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1.5px solid var(--border-strong);
+    font-weight: 680;
+  }
+
+  /* ---------- Kategorieverwaltung in den Einstellungen ---------- */
+  .cat-manage { display: flex; flex-wrap: wrap; gap: 7px; }
+  .cat-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 5px 6px 5px 11px;
+    font-size: .82rem;
+    font-weight: 550;
+  }
+  .cat-tag button {
+    all: unset;
+    cursor: pointer;
+    width: 18px; height: 18px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    color: var(--text-dim);
+  }
+  .cat-tag button:hover { background: var(--danger-soft); color: var(--danger); }
+  .cat-tag svg { width: 11px; height: 11px; }
+  .cat-tag.in-use button { display: none; }
+
   .item-unsynced {
     display: inline-block;
     width: 6px; height: 6px; border-radius: 50%;
@@ -435,7 +509,7 @@
       <div class="field"><label for="f_netto">Netto</label><input type="number" inputmode="decimal" step="0.01" id="f_netto" placeholder="0,00"></div>
       <div class="field"><label for="f_mwst_satz">MwSt-Satz %</label><input type="number" inputmode="decimal" step="0.01" id="f_mwst_satz" placeholder="19"></div>
       <div class="field"><label for="f_waehrung">Währung</label><input type="text" id="f_waehrung" value="EUR"></div>
-      <div class="field"><label for="f_kategorie">Kategorie</label><input type="text" id="f_kategorie" placeholder="z.B. Büromaterial"></div>
+      <div class="field"><label for="f_kategorie">Kategorie</label><select id="f_kategorie"></select></div>
       <div class="field wide"><label for="f_notizen">Notizen</label><textarea id="f_notizen" rows="2"></textarea></div>
     </div>
     <div class="actions">
@@ -455,6 +529,16 @@
       <div class="stat"><div class="val" id="statTotal">0 €</div><div class="lbl">Gesamt</div></div>
       <div class="stat"><div class="val" id="statVat">0 €</div><div class="lbl">MwSt</div></div>
     </div>
+    <div class="period hidden" id="periodFilter">
+      <select id="filterJahr" aria-label="Jahr"></select>
+      <select id="filterMonat" aria-label="Monat"></select>
+    </div>
+
+    <section class="card hidden" id="analysisCard" style="margin-top:12px">
+      <h2 class="card-title">Auswertung nach Kategorie</h2>
+      <div id="analysisRows"></div>
+    </section>
+
     <button class="syncbar hidden" id="syncBar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.6-4.2M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.6 4.2"/><path d="M21 3v4.2h-4.2M3 21v-4.2h4.2"/></svg>
       <span class="sb-text" id="syncBarText">Nicht synchronisiert</span>
@@ -553,6 +637,15 @@
     </div>
 
     <div class="setting-group">
+      <h3 class="card-title">Kategorien</h3>
+      <div class="card stack">
+        <div class="cat-manage" id="catManage"></div>
+        <button class="btn-secondary" id="addCatBtn">Kategorie hinzufügen</button>
+        <div class="status">Kategorien, die bereits in einem Beleg verwendet werden, lassen sich nicht entfernen. Sie stehen automatisch auf allen Geräten zur Verfügung, sobald der jeweilige Beleg synchronisiert wurde.</div>
+      </div>
+    </div>
+
+    <div class="setting-group">
       <h3 class="card-title">Daten</h3>
       <div class="card stack">
         <button class="btn-danger" id="clearAllBtn">Alle Einträge löschen</button>
@@ -571,8 +664,63 @@
   const LS_KEY_API = "rechnungsapp_apikey";
   const LS_KEY_MODEL = "rechnungsapp_model";
   const LS_KEY_INVOICES = "rechnungsapp_invoices";
+  const LS_KEY_CATS = "rechnungsapp_kategorien";
+  const DEFAULT_CATS = ["Mechatronik", "Pension", "HW"];
+  const NEW_CAT_VALUE = "__neue__";
 
   const $ = (id) => document.getElementById(id);
+
+  // ---------- Kategorien ----------
+  let customCats;
+  try {
+    const gespeichert = JSON.parse(localStorage.getItem(LS_KEY_CATS) || "null");
+    customCats = Array.isArray(gespeichert) ? gespeichert : DEFAULT_CATS.slice();
+  } catch (e) {
+    customCats = DEFAULT_CATS.slice();
+  }
+
+  function persistCats() { localStorage.setItem(LS_KEY_CATS, JSON.stringify(customCats)); }
+
+  // Eigene Liste plus alles, was in Belegen vorkommt — so tauchen auf einem Gerät
+  // angelegte Kategorien nach dem Sync automatisch auch auf dem anderen auf.
+  function allCategories() {
+    const set = new Set(customCats.filter(Boolean));
+    invoices.forEach((i) => { if (i.kategorie) set.add(i.kategorie); });
+    return [...set].sort((a, b) => a.localeCompare(b, "de"));
+  }
+
+  function categoryInUse(name) {
+    return invoices.some((i) => i.kategorie === name);
+  }
+
+  function addCategory(name) {
+    const clean = String(name || "").trim();
+    if (!clean) return null;
+    const vorhanden = allCategories().find((c) => c.toLowerCase() === clean.toLowerCase());
+    if (vorhanden) return vorhanden;
+    customCats.push(clean);
+    persistCats();
+    return clean;
+  }
+
+  // Options-HTML für ein Kategorie-Auswahlfeld; `withNew` hängt „+ neue Kategorie“ an.
+  function categoryOptionsHtml(value, withNew) {
+    const cats = allCategories();
+    const opts = [`<option value=""${!value ? " selected" : ""}>Ohne Kategorie</option>`];
+    cats.forEach((c) => {
+      opts.push(`<option value="${esc(c)}"${c === value ? " selected" : ""}>${esc(c)}</option>`);
+    });
+    if (value && !cats.includes(value)) {
+      opts.push(`<option value="${esc(value)}" selected>${esc(value)}</option>`);
+    }
+    if (withNew) opts.push(`<option value="${NEW_CAT_VALUE}">+ neue Kategorie…</option>`);
+    return opts.join("");
+  }
+
+  function fillCategorySelect(sel, value, withNew) {
+    sel.innerHTML = categoryOptionsHtml(value, withNew);
+    sel.value = value || "";
+  }
 
   // ---------- Toast ----------
   const toastEl = $("toast");
@@ -721,26 +869,39 @@
   }
 
   // ---------- Claude Vision ----------
-  const EXTRACT_TOOL = {
-    name: "extract_invoice",
-    description: "Extrahiert strukturierte Rechnungsdaten aus einem Rechnungsfoto.",
-    input_schema: {
-      type: "object",
-      properties: {
-        datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD." },
-        lieferant: { type: "string", description: "Name des Rechnungsstellers / Lieferanten / Geschäfts." },
-        rechnungsnummer: { type: "string", description: "Rechnungs- oder Belegnummer, falls vorhanden." },
-        nettobetrag: { type: "number", description: "Nettobetrag ohne MwSt, falls erkennbar." },
-        mwst_satz: { type: "number", description: "Mehrwertsteuersatz in Prozent, z.B. 19 oder 7." },
-        mwst_betrag: { type: "number", description: "Mehrwertsteuerbetrag in Währungseinheiten." },
-        gesamtbetrag: { type: "number", description: "Gesamtbetrag / Bruttobetrag der Rechnung." },
-        waehrung: { type: "string", description: "Währungscode, z.B. EUR, CHF, USD." },
-        kategorie: { type: "string", description: "Grobe Ausgabenkategorie (z.B. Büromaterial, Reise, Software, Bewirtung)." },
-        notizen: { type: "string", description: "Sonstige Hinweise, z.B. Unsicherheiten bei der Erkennung." }
-      },
-      required: ["datum", "lieferant", "rechnungsnummer", "gesamtbetrag", "mwst_betrag", "waehrung"]
-    }
-  };
+  // Die Kategorieliste wird bei jedem Aufruf frisch eingesetzt, damit Claude nur aus den
+  // tatsächlich vorhandenen Kategorien wählt.
+  function buildExtractTool() {
+    const cats = allCategories();
+    const kategorie = cats.length
+      ? {
+          type: "string",
+          enum: cats,
+          description: "Die am besten passende Kategorie für diese Rechnung. Wähle ausschließlich einen der vorgegebenen Werte — auch dann, wenn keiner perfekt passt: nimm in dem Fall den nächstliegenden."
+        }
+      : { type: "string", description: "Grobe Ausgabenkategorie." };
+
+    return {
+      name: "extract_invoice",
+      description: "Extrahiert strukturierte Rechnungsdaten aus einem Rechnungsfoto.",
+      input_schema: {
+        type: "object",
+        properties: {
+          datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD." },
+          lieferant: { type: "string", description: "Name des Rechnungsstellers / Lieferanten / Geschäfts." },
+          rechnungsnummer: { type: "string", description: "Rechnungs- oder Belegnummer, falls vorhanden." },
+          nettobetrag: { type: "number", description: "Nettobetrag ohne MwSt, falls erkennbar." },
+          mwst_satz: { type: "number", description: "Mehrwertsteuersatz in Prozent, z.B. 19 oder 7." },
+          mwst_betrag: { type: "number", description: "Mehrwertsteuerbetrag in Währungseinheiten." },
+          gesamtbetrag: { type: "number", description: "Gesamtbetrag / Bruttobetrag der Rechnung." },
+          waehrung: { type: "string", description: "Währungscode, z.B. EUR, CHF, USD." },
+          kategorie,
+          notizen: { type: "string", description: "Sonstige Hinweise, z.B. Unsicherheiten bei der Erkennung." }
+        },
+        required: ["datum", "lieferant", "rechnungsnummer", "gesamtbetrag", "mwst_betrag", "waehrung", "kategorie"]
+      }
+    };
+  }
 
   analyzeBtn.addEventListener("click", analyzeInvoice);
 
@@ -772,13 +933,13 @@
         body: JSON.stringify({
           model: modelSelect.value,
           max_tokens: 1024,
-          tools: [EXTRACT_TOOL],
+          tools: [buildExtractTool()],
           tool_choice: { type: "tool", name: "extract_invoice" },
           messages: [{
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
-              { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol." }
+              { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol. Ordne die Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu." }
             ]
           }]
         })
@@ -830,9 +991,25 @@
     f.mwst_betrag.value = x.mwst_betrag ?? "";
     f.gesamt.value = x.gesamtbetrag ?? "";
     f.waehrung.value = x.waehrung || "EUR";
-    f.kategorie.value = x.kategorie || "";
+    fillCategorySelect(f.kategorie, x.kategorie || "", true);
     f.notizen.value = x.notizen || "";
   }
+
+  // „+ neue Kategorie…“ im Formular
+  let letzteKategorie = "";
+  f.kategorie.addEventListener("change", () => {
+    if (f.kategorie.value !== NEW_CAT_VALUE) {
+      letzteKategorie = f.kategorie.value;
+      return;
+    }
+    const name = prompt("Name der neuen Kategorie:");
+    const angelegt = addCategory(name);
+    fillCategorySelect(f.kategorie, angelegt || letzteKategorie, true);
+    if (angelegt) {
+      renderCatManage();
+      toast(`Kategorie „${angelegt}“ angelegt`);
+    }
+  });
 
   function normalizeDate(d) {
     if (!d) return "";
@@ -956,12 +1133,105 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // ---------- Zeitraum-Filter ----------
+  const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  let filterJahr = "";
+  let filterMonat = "";
+
+  function invPeriod(inv) {
+    const d = inv.datum || String(inv.erfasstAm || "").slice(0, 10);
+    const m = /^(\d{4})-(\d{2})/.exec(d);
+    return m ? { jahr: m[1], monat: m[2] } : null;
+  }
+
+  function getFiltered() {
+    if (!filterJahr && !filterMonat) return invoices.slice();
+    return invoices.filter((inv) => {
+      const p = invPeriod(inv);
+      if (!p) return false;
+      if (filterJahr && p.jahr !== filterJahr) return false;
+      if (filterMonat && p.monat !== filterMonat) return false;
+      return true;
+    });
+  }
+
+  function renderFilters() {
+    const jahre = [...new Set(invoices.map((i) => (invPeriod(i) || {}).jahr).filter(Boolean))].sort().reverse();
+    if (filterJahr && !jahre.includes(filterJahr)) filterJahr = "";
+
+    const jahrSel = $("filterJahr");
+    jahrSel.innerHTML = ['<option value="">Alle Jahre</option>']
+      .concat(jahre.map((j) => `<option value="${j}"${j === filterJahr ? " selected" : ""}>${j}</option>`))
+      .join("");
+
+    const monatSel = $("filterMonat");
+    monatSel.innerHTML = ['<option value="">Alle Monate</option>']
+      .concat(MONATE.map((name, idx) => {
+        const wert = String(idx + 1).padStart(2, "0");
+        return `<option value="${wert}"${wert === filterMonat ? " selected" : ""}>${name}</option>`;
+      }))
+      .join("");
+
+    $("periodFilter").classList.toggle("hidden", invoices.length === 0);
+  }
+
+  // ---------- Auswertung ----------
+  function renderAnalysis(liste) {
+    const card = $("analysisCard");
+    if (liste.length === 0) { card.classList.add("hidden"); return; }
+    card.classList.remove("hidden");
+
+    const gruppen = new Map();
+    liste.forEach((inv) => {
+      const key = inv.kategorie || "Ohne Kategorie";
+      const g = gruppen.get(key) || { anzahl: 0, summe: 0, mwst: 0 };
+      g.anzahl += 1;
+      g.summe += inv.gesamtbetrag || 0;
+      g.mwst += inv.mwst_betrag || 0;
+      gruppen.set(key, g);
+    });
+
+    const zeilen = [...gruppen.entries()].sort((a, b) => b[1].summe - a[1].summe);
+    const gesamt = zeilen.reduce((s, [, g]) => s + g.summe, 0);
+    const gesamtMwst = zeilen.reduce((s, [, g]) => s + g.mwst, 0);
+    const max = Math.max(...zeilen.map(([, g]) => g.summe), 0);
+
+    $("analysisRows").innerHTML = zeilen.map(([name, g]) => {
+      const anteil = gesamt > 0 ? Math.round((g.summe / gesamt) * 100) : 0;
+      const breite = max > 0 ? Math.max((g.summe / max) * 100, 2) : 0;
+      return `
+        <div class="an-row">
+          <div class="an-head">
+            <span class="an-name">${esc(name)}</span>
+            <span class="an-sum">${fmtMoney.format(g.summe)}</span>
+          </div>
+          <div class="an-sub">${g.anzahl} ${g.anzahl === 1 ? "Beleg" : "Belege"} · MwSt ${fmtMoney.format(g.mwst)} · ${anteil}%</div>
+          <div class="an-bar"><i style="width:${breite}%"></i></div>
+        </div>`;
+    }).join("") + `
+      <div class="an-total">
+        <span>Gesamt</span>
+        <span>${fmtMoney.format(gesamt)}</span>
+      </div>
+      <div class="an-sub" style="text-align:right">davon MwSt ${fmtMoney.format(gesamtMwst)}</div>`;
+  }
+
+  // ---------- Gesamtdarstellung ----------
   function render() {
-    const total = invoices.reduce((s, i) => s + (i.gesamtbetrag || 0), 0);
-    const vat = invoices.reduce((s, i) => s + (i.mwst_betrag || 0), 0);
-    $("statCount").textContent = invoices.length;
+    renderFilters();
+    // Formular-Dropdown mitziehen, falls währenddessen eine Kategorie dazukam
+    if (f.kategorie.value !== NEW_CAT_VALUE) {
+      fillCategorySelect(f.kategorie, f.kategorie.value, true);
+    }
+    const liste = getFiltered();
+
+    const total = liste.reduce((s, i) => s + (i.gesamtbetrag || 0), 0);
+    const vat = liste.reduce((s, i) => s + (i.mwst_betrag || 0), 0);
+    $("statCount").textContent = liste.length;
     $("statTotal").textContent = fmtMoneyShort.format(total);
     $("statVat").textContent = fmtMoneyShort.format(vat);
+
+    renderAnalysis(liste);
 
     if (invoices.length === 0) {
       listEl.innerHTML = '<div class="empty">Noch keine Rechnungen erfasst.</div>';
@@ -970,12 +1240,16 @@
     }
     archiveActions.classList.remove("hidden");
 
-    listEl.innerHTML = invoices.slice().reverse().map((inv) => {
+    if (liste.length === 0) {
+      listEl.innerHTML = '<div class="empty">Keine Belege in diesem Zeitraum.</div>';
+      return;
+    }
+
+    listEl.innerHTML = liste.slice().reverse().map((inv) => {
       const meta = [
         inv.datum ? new Date(inv.datum + "T00:00:00").toLocaleDateString("de-DE") : "ohne Datum",
         inv.rechnungsnummer || null,
-        inv.mwst_betrag != null ? "MwSt " + fmtMoney.format(inv.mwst_betrag) : null,
-        inv.kategorie || null
+        inv.mwst_betrag != null ? "MwSt " + fmtMoney.format(inv.mwst_betrag) : null
       ].filter(Boolean).join(" · ");
       return `
         <div class="item">
@@ -984,7 +1258,10 @@
               <span class="item-name">${esc(inv.lieferant || "Unbekannt")}</span>
               <span class="item-amount">${inv.gesamtbetrag != null ? fmtMoney.format(inv.gesamtbetrag) : "—"}</span>
             </div>
-            <div class="item-meta">${syncEnabled() && !inv._path ? '<span class="item-unsynced" title="Noch nicht synchronisiert"></span>' : ""}${esc(meta)}</div>
+            <div class="item-meta">${syncEnabled() && (!inv._path || inv._dirty) ? '<span class="item-unsynced" title="Noch nicht synchronisiert"></span>' : ""}${esc(meta)}</div>
+            <select class="cat-select${inv.kategorie ? "" : " is-empty"}" data-cat-id="${inv.id}" aria-label="Kategorie">
+              ${categoryOptionsHtml(inv.kategorie || "", true)}
+            </select>
           </div>
           <button class="item-del" data-id="${inv.id}" aria-label="Eintrag löschen">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -992,6 +1269,31 @@
         </div>`;
     }).join("");
   }
+
+  $("filterJahr").addEventListener("change", (e) => { filterJahr = e.target.value; render(); });
+  $("filterMonat").addEventListener("change", (e) => { filterMonat = e.target.value; render(); });
+
+  // Kategorie direkt in der Belegliste ändern (auch nachträglich für alte Belege)
+  listEl.addEventListener("change", (e) => {
+    const sel = e.target.closest("select[data-cat-id]");
+    if (!sel) return;
+    const rec = invoices.find((i) => i.id === sel.getAttribute("data-cat-id"));
+    if (!rec) return;
+
+    let wert = sel.value;
+    if (wert === NEW_CAT_VALUE) {
+      const angelegt = addCategory(prompt("Name der neuen Kategorie:"));
+      if (!angelegt) { render(); return; }
+      wert = angelegt;
+      renderCatManage();
+    }
+
+    rec.kategorie = wert;
+    rec._dirty = true;
+    persist();
+    render();
+    if (syncEnabled()) syncNow({ silent: true });
+  });
 
   listEl.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-id]");
@@ -1003,6 +1305,40 @@
     render();
     toast("Eintrag gelöscht");
     if (rec && rec._path) queueRemoteDelete(rec);
+  });
+
+  // ---------- Kategorieverwaltung (Einstellungen) ----------
+  function renderCatManage() {
+    const box = $("catManage");
+    const cats = allCategories();
+    if (cats.length === 0) {
+      box.innerHTML = '<div class="status">Noch keine Kategorien angelegt.</div>';
+      return;
+    }
+    box.innerHTML = cats.map((c) => {
+      const benutzt = categoryInUse(c);
+      return `<span class="cat-tag${benutzt ? " in-use" : ""}">${esc(c)}<button data-cat="${esc(c)}" aria-label="Kategorie entfernen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>`;
+    }).join("");
+  }
+
+  $("catManage").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-cat]");
+    if (!btn) return;
+    const name = btn.getAttribute("data-cat");
+    if (categoryInUse(name)) { toast("Kategorie wird noch verwendet"); return; }
+    customCats = customCats.filter((c) => c !== name);
+    persistCats();
+    renderCatManage();
+    render();
+    toast(`Kategorie „${name}“ entfernt`);
+  });
+
+  $("addCatBtn").addEventListener("click", () => {
+    const angelegt = addCategory(prompt("Name der neuen Kategorie:"));
+    if (!angelegt) return;
+    renderCatManage();
+    render();
+    toast(`Kategorie „${angelegt}“ angelegt`);
   });
 
   $("clearAllBtn").addEventListener("click", () => {
@@ -1289,7 +1625,7 @@
       syncBarText.textContent = message || "Sync fehlgeschlagen — tippen für neuen Versuch";
     } else {
       const t = formatSyncTime(lastSyncAt);
-      const offen = invoices.filter((i) => !i._path).length + pendingDeletes.length;
+      const offen = invoices.filter((i) => !i._path || i._dirty).length + pendingDeletes.length;
       syncBarText.textContent = (t ? "Zuletzt synchronisiert " + t : "Noch nicht synchronisiert")
         + (offen ? ` · ${offen} offen` : "");
     }
@@ -1340,13 +1676,17 @@
       pendingDeletes = stillPending;
       persistPending();
 
-      // 2. Lokale Einträge ohne Remote-Datei hochladen (deckt auch die Erstmigration ab)
+      // 2. Neue Belege hochladen (deckt auch die Erstmigration ab) und lokal geänderte
+      //    Belege (z.B. nachträglich gesetzte Kategorie) aktualisieren.
       for (const inv of invoices) {
-        if (inv._path) continue;
-        const path = buildPath(inv);
-        const res = await ghWriteFile(path, fileBody(inv), remote.get(path), `Beleg ${inv.lieferant || ""}`.trim());
+        if (inv._path && !inv._dirty) continue;
+        const neu = !inv._path;
+        const path = inv._path || buildPath(inv);
+        const sha = remote.get(path) || inv._sha || undefined;
+        const res = await ghWriteFile(path, fileBody(inv), sha, `Beleg ${neu ? "erfasst" : "aktualisiert"}: ${inv.lieferant || ""}`.trim());
         inv._path = path;
         inv._sha = res && res.content ? res.content.sha : null;
+        delete inv._dirty;
         remote.set(path, inv._sha);
       }
 
@@ -1454,7 +1794,7 @@
     if (!confirm("Synchronisierung deaktivieren?\n\nDie Daten bleiben lokal und im Repo erhalten; dieses Gerät gleicht nur nicht mehr ab.")) return;
     syncCfg = { owner: "", repo: "", token: "" };
     pendingDeletes = [];
-    invoices.forEach((i) => { delete i._path; delete i._sha; });
+    invoices.forEach((i) => { delete i._path; delete i._sha; delete i._dirty; });
     localStorage.removeItem(LS_KEY_SYNC);
     localStorage.removeItem(LS_KEY_LASTSYNC);
     localStorage.removeItem(LS_KEY_PENDING);
@@ -1478,6 +1818,8 @@
 
   // ---------- Start ----------
   sortInvoices();
+  fillCategorySelect(f.kategorie, "", true);
+  renderCatManage();
   render();
   refreshSyncSettingsUi();
   setSyncState("idle");
