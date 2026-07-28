@@ -272,6 +272,33 @@
 
   .empty { text-align: center; color: var(--text-dim); padding: 24px 12px; font-size: .9rem; }
 
+  /* ---------- MwSt-Zeilen im Formular ---------- */
+  .tax-head, .tax-row {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr 1.15fr 30px;
+    gap: 6px;
+    align-items: center;
+  }
+  .tax-head {
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 4px;
+    padding: 0 2px;
+  }
+  .tax-row { margin-bottom: 6px; }
+  .tax-row input { padding: 9px 7px; }
+  .tax-del {
+    width: 30px; height: 30px; padding: 0;
+    border: none; background: transparent; color: var(--text-dim);
+    border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  }
+  .tax-del:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
+  .tax-del:disabled { opacity: .25; cursor: default; }
+  .tax-del svg { width: 14px; height: 14px; }
+
   /* ---------- Zeitraum-Filter ---------- */
   .period {
     display: flex; gap: 8px; margin-top: 12px;
@@ -530,10 +557,14 @@
       <div class="field"><label for="f_rechnungsnummer">Rechnungsnr.</label><input type="text" id="f_rechnungsnummer" placeholder="—"></div>
       <div class="field wide"><label for="f_lieferant">Lieferant</label><input type="text" id="f_lieferant" placeholder="—"></div>
       <div class="field field-highlight"><label for="f_gesamt">Gesamt (brutto)</label><input type="number" inputmode="decimal" step="0.01" id="f_gesamt" placeholder="0,00"></div>
-      <div class="field field-highlight"><label for="f_mwst_betrag">MwSt-Betrag</label><input type="number" inputmode="decimal" step="0.01" id="f_mwst_betrag" placeholder="0,00"></div>
-      <div class="field"><label for="f_netto">Netto</label><input type="number" inputmode="decimal" step="0.01" id="f_netto" placeholder="0,00"></div>
-      <div class="field"><label for="f_mwst_satz">MwSt-Satz %</label><input type="number" inputmode="decimal" step="0.01" id="f_mwst_satz" placeholder="19"></div>
       <div class="field"><label for="f_waehrung">Währung</label><input type="text" id="f_waehrung" value="EUR"></div>
+      <div class="field wide">
+        <label>MwSt-Zeilen</label>
+        <div class="tax-head"><span>Satz %</span><span>Netto</span><span>MwSt</span><span></span></div>
+        <div id="taxRows"></div>
+        <button class="btn-ghost" id="addTaxRow" style="padding:6px 8px;margin-top:2px">+ weiterer MwSt-Satz</button>
+        <div class="status" id="taxSum" style="margin-top:6px"></div>
+      </div>
       <div class="field"><label for="f_kategorie">Kategorie</label><select id="f_kategorie"></select></div>
       <div class="field wide"><label for="f_notizen">Notizen</label><textarea id="f_notizen" rows="2"></textarea></div>
     </div>
@@ -562,6 +593,8 @@
     <section class="card hidden" id="analysisCard" style="margin-top:12px">
       <h2 class="card-title">Auswertung nach Kategorie</h2>
       <div id="analysisRows"></div>
+      <h2 class="card-title" style="margin-top:22px">Nach MwSt-Satz</h2>
+      <div id="vatRows"></div>
     </section>
 
     <button class="syncbar hidden" id="syncBar">
@@ -755,6 +788,49 @@
   function fillCategorySelect(sel, value) {
     sel.innerHTML = categoryOptionsHtml(value);
     sel.value = value || "";
+  }
+
+  // ---------- MwSt-Zeilen ----------
+  // Eine Rechnung kann mehrere Steuersätze enthalten (z.B. 7 % und 19 %). Sie liegen
+  // als Array `steuerzeilen` am Beleg. Ältere Belege haben stattdessen die flachen
+  // Einzelfelder — die werden hier als genau eine Zeile gelesen, damit alles
+  // Weitere (Auswertung, Bericht, Anzeige) nur noch einen Weg kennt.
+  function zeilenVon(inv) {
+    if (Array.isArray(inv.steuerzeilen) && inv.steuerzeilen.length) return inv.steuerzeilen;
+    return [{
+      nettobetrag: inv.nettobetrag != null ? inv.nettobetrag : null,
+      mwst_satz: inv.mwst_satz != null ? inv.mwst_satz : null,
+      mwst_betrag: inv.mwst_betrag != null ? inv.mwst_betrag : null
+    }];
+  }
+
+  // Auf Cent runden: verhindert Artefakte wie 19.240000000000002 in Excel-Zellen
+  function r2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+  function summeNetto(inv) { return r2(zeilenVon(inv).reduce((s, z) => s + (z.nettobetrag || 0), 0)); }
+  function summeMwst(inv) { return r2(zeilenVon(inv).reduce((s, z) => s + (z.mwst_betrag || 0), 0)); }
+
+  // Schreibt die aggregierten Einzelfelder mit. Sie sind rein abgeleitet, machen aber
+  // die Excel-Zeile lesbar und halten Belege für ältere App-Stände interpretierbar.
+  function setzeSpiegelfelder(rec) {
+    const zeilen = zeilenVon(rec);
+    rec.nettobetrag = zeilen.some((z) => z.nettobetrag != null) ? summeNetto(rec) : null;
+    rec.mwst_betrag = zeilen.some((z) => z.mwst_betrag != null) ? summeMwst(rec) : null;
+    rec.mwst_satz = zeilen.length === 1 ? zeilen[0].mwst_satz : null;
+    return rec;
+  }
+
+  function satzLabel(satz) {
+    return satz == null || satz === "" ? "ohne Satz" : `${Number(satz).toLocaleString("de-DE", { maximumFractionDigits: 2 })} %`;
+  }
+
+  // Listet die Steuerzeilen eines Belegs einzeln auf, z.B. „MwSt 19 %: 39,92 € · 7 %: 3,50 €“
+  function mwstMetaText(inv) {
+    const zeilen = zeilenVon(inv).filter((z) => z.mwst_betrag != null || z.mwst_satz != null);
+    if (!zeilen.length) return null;
+    return "MwSt " + zeilen
+      .map((z) => `${satzLabel(z.mwst_satz)}: ${z.mwst_betrag != null ? fmtMoney.format(z.mwst_betrag) : "—"}`)
+      .join(" · ");
   }
 
   // ---------- Toast ----------
@@ -1002,15 +1078,25 @@
           datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD." },
           lieferant: { type: "string", description: "Name des Rechnungsstellers / Lieferanten / Geschäfts." },
           rechnungsnummer: { type: "string", description: "Rechnungs- oder Belegnummer, falls vorhanden." },
-          nettobetrag: { type: "number", description: "Nettobetrag ohne MwSt, falls erkennbar." },
-          mwst_satz: { type: "number", description: "Mehrwertsteuersatz in Prozent, z.B. 19 oder 7." },
-          mwst_betrag: { type: "number", description: "Mehrwertsteuerbetrag in Währungseinheiten." },
-          gesamtbetrag: { type: "number", description: "Gesamtbetrag / Bruttobetrag der Rechnung." },
+          steuerzeilen: {
+            type: "array",
+            description: "Eine Zeile pro Mehrwertsteuersatz, der auf dem Beleg vorkommt. Viele Belege (z.B. Supermarkt, Baumarkt) weisen mehrere Sätze getrennt aus — dann eine Zeile je Satz anlegen. Bei nur einem Satz genau eine Zeile.",
+            items: {
+              type: "object",
+              properties: {
+                mwst_satz: { type: "number", description: "Mehrwertsteuersatz in Prozent, z.B. 19 oder 7." },
+                nettobetrag: { type: "number", description: "Nettobetrag, der zu diesem Satz gehört." },
+                mwst_betrag: { type: "number", description: "Mehrwertsteuerbetrag, der zu diesem Satz gehört." }
+              },
+              required: ["mwst_satz", "mwst_betrag"]
+            }
+          },
+          gesamtbetrag: { type: "number", description: "Gesamtbetrag / Bruttobetrag der gesamten Rechnung über alle Steuersätze hinweg." },
           waehrung: { type: "string", description: "Währungscode, z.B. EUR, CHF, USD." },
           kategorie,
           notizen: { type: "string", description: "Sonstige Hinweise, z.B. Unsicherheiten bei der Erkennung." }
         },
-        required: ["datum", "lieferant", "rechnungsnummer", "gesamtbetrag", "mwst_betrag", "waehrung", "kategorie"]
+        required: ["datum", "lieferant", "rechnungsnummer", "steuerzeilen", "gesamtbetrag", "waehrung", "kategorie"]
       }
     };
   }
@@ -1053,7 +1139,7 @@
             role: "user",
             content: [
               quelle,
-              { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol. Ordne die Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu." }
+              { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol. Achte besonders auf die Mehrwertsteuer-Aufschlüsselung: Sind mehrere Steuersätze ausgewiesen, lege für jeden Satz eine eigene Zeile in steuerzeilen an. Ordne die Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu." }
             ]
           }]
         })
@@ -1087,26 +1173,82 @@
     datum: $("f_datum"),
     lieferant: $("f_lieferant"),
     rechnungsnummer: $("f_rechnungsnummer"),
-    netto: $("f_netto"),
-    mwst_satz: $("f_mwst_satz"),
-    mwst_betrag: $("f_mwst_betrag"),
     gesamt: $("f_gesamt"),
     waehrung: $("f_waehrung"),
     kategorie: $("f_kategorie"),
     notizen: $("f_notizen")
   };
 
+  const taxRowsEl = $("taxRows");
+
+  function taxRowHtml(z) {
+    z = z || {};
+    const v = (x) => (x != null && x !== "" ? x : "");
+    return `<div class="tax-row">
+      <input type="number" inputmode="decimal" step="0.01" class="tax-satz" placeholder="19" value="${v(z.mwst_satz)}" aria-label="MwSt-Satz">
+      <input type="number" inputmode="decimal" step="0.01" class="tax-netto" placeholder="0,00" value="${v(z.nettobetrag)}" aria-label="Netto">
+      <input type="number" inputmode="decimal" step="0.01" class="tax-mwst" placeholder="0,00" value="${v(z.mwst_betrag)}" aria-label="MwSt-Betrag">
+      <button type="button" class="tax-del" aria-label="Zeile entfernen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>`;
+  }
+
+  function renderTaxRows(zeilen) {
+    const liste = Array.isArray(zeilen) && zeilen.length ? zeilen : [{}];
+    taxRowsEl.innerHTML = liste.map(taxRowHtml).join("");
+    updateTaxSummary();
+  }
+
+  // Liest die Zeilen aus dem Formular; komplett leere Zeilen fallen weg.
+  function formZeilen() {
+    return [...taxRowsEl.querySelectorAll(".tax-row")].map((r) => ({
+      mwst_satz: parseNum(r.querySelector(".tax-satz").value),
+      nettobetrag: parseNum(r.querySelector(".tax-netto").value),
+      mwst_betrag: parseNum(r.querySelector(".tax-mwst").value)
+    })).filter((z) => z.mwst_satz != null || z.nettobetrag != null || z.mwst_betrag != null);
+  }
+
+  function updateTaxSummary() {
+    const zeilen = formZeilen();
+    const netto = zeilen.reduce((s, z) => s + (z.nettobetrag || 0), 0);
+    const mwst = zeilen.reduce((s, z) => s + (z.mwst_betrag || 0), 0);
+    const summe = netto + mwst;
+    const gesamt = parseNum(f.gesamt.value);
+    const abweichung = gesamt != null && Math.abs(gesamt - summe) > 0.02;
+
+    taxRowsEl.querySelectorAll(".tax-del").forEach((b) => { b.disabled = taxRowsEl.children.length <= 1; });
+
+    const el = $("taxSum");
+    el.textContent = `Netto ${fmtMoney.format(netto)} · MwSt ${fmtMoney.format(mwst)} · Brutto ${fmtMoney.format(summe)}`
+      + (abweichung ? ` — weicht vom Gesamtbetrag ${fmtMoney.format(gesamt)} ab` : "");
+    el.className = abweichung ? "status err" : "status";
+  }
+
+  $("addTaxRow").addEventListener("click", () => {
+    taxRowsEl.insertAdjacentHTML("beforeend", taxRowHtml({}));
+    updateTaxSummary();
+  });
+  taxRowsEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".tax-del");
+    if (!btn || btn.disabled) return;
+    btn.closest(".tax-row").remove();
+    updateTaxSummary();
+  });
+  taxRowsEl.addEventListener("input", updateTaxSummary);
+  f.gesamt.addEventListener("input", updateTaxSummary);
+
   function fillForm(x) {
     f.datum.value = normalizeDate(x.datum);
     f.lieferant.value = x.lieferant || "";
     f.rechnungsnummer.value = x.rechnungsnummer || "";
-    f.netto.value = x.nettobetrag ?? "";
-    f.mwst_satz.value = x.mwst_satz ?? "";
-    f.mwst_betrag.value = x.mwst_betrag ?? "";
-    f.gesamt.value = x.gesamtbetrag ?? "";
+    f.gesamt.value = x.gesamtbetrag != null ? x.gesamtbetrag : "";
     f.waehrung.value = x.waehrung || "EUR";
     fillCategorySelect(f.kategorie, x.kategorie || "");
     f.notizen.value = x.notizen || "";
+    renderTaxRows(
+      Array.isArray(x.steuerzeilen) && x.steuerzeilen.length
+        ? x.steuerzeilen
+        : [{ mwst_satz: x.mwst_satz, nettobetrag: x.nettobetrag, mwst_betrag: x.mwst_betrag }]
+    );
   }
 
   function normalizeDate(d) {
@@ -1207,15 +1349,16 @@
         via = "download";
       }
 
+      const eingegeben = formZeilen();
+      const zeilen = eingegeben.length ? eingegeben : [{ mwst_satz: null, nettobetrag: null, mwst_betrag: null }];
+
       const record = {
         belegTyp: typ,
         id: Date.now() + "_" + Math.random().toString(36).slice(2, 8),
         datum: f.datum.value,
         lieferant: f.lieferant.value,
         rechnungsnummer: f.rechnungsnummer.value,
-        nettobetrag: parseNum(f.netto.value),
-        mwst_satz: parseNum(f.mwst_satz.value),
-        mwst_betrag: parseNum(f.mwst_betrag.value),
+        steuerzeilen: zeilen,
         gesamtbetrag: parseNum(f.gesamt.value),
         waehrung: f.waehrung.value || "EUR",
         kategorie: f.kategorie.value,
@@ -1223,6 +1366,7 @@
         archiveFilename,
         erfasstAm: new Date().toISOString()
       };
+      setzeSpiegelfelder(record);
       invoices.push(record);
       persist();
 
@@ -1322,13 +1466,14 @@
     if (liste.length === 0) { card.classList.add("hidden"); return; }
     card.classList.remove("hidden");
 
+    // Zählt Rechnungen, nicht Steuerzeilen: ein Beleg mit 7 % und 19 % bleibt ein Beleg.
     const gruppen = new Map();
     liste.forEach((inv) => {
       const key = inv.kategorie || "Ohne Kategorie";
       const g = gruppen.get(key) || { anzahl: 0, summe: 0, mwst: 0 };
       g.anzahl += 1;
       g.summe += inv.gesamtbetrag || 0;
-      g.mwst += inv.mwst_betrag || 0;
+      g.mwst += summeMwst(inv);
       gruppen.set(key, g);
     });
 
@@ -1355,6 +1500,48 @@
         <span>${fmtMoney.format(gesamt)}</span>
       </div>
       <div class="an-sub" style="text-align:right">davon MwSt ${fmtMoney.format(gesamtMwst)}</div>`;
+
+    renderVatBreakdown(liste);
+  }
+
+  // Aufschlüsselung über alle Steuerzeilen hinweg — hier zählen die Zeilen, nicht die Belege.
+  function renderVatBreakdown(liste) {
+    const gruppen = new Map();
+    liste.forEach((inv) => {
+      zeilenVon(inv).forEach((z) => {
+        if (z.mwst_betrag == null && z.nettobetrag == null) return;
+        const key = z.mwst_satz != null ? String(z.mwst_satz) : "ohne";
+        const g = gruppen.get(key) || { satz: z.mwst_satz, netto: 0, mwst: 0, zeilen: 0 };
+        g.netto += z.nettobetrag || 0;
+        g.mwst += z.mwst_betrag || 0;
+        g.zeilen += 1;
+        gruppen.set(key, g);
+      });
+    });
+
+    const box = $("vatRows");
+    if (gruppen.size === 0) {
+      box.innerHTML = '<div class="an-sub">Keine Steuerangaben in diesem Zeitraum.</div>';
+      return;
+    }
+
+    const zeilen = [...gruppen.values()].sort((a, b) => (b.satz || 0) - (a.satz || 0));
+    const gesamtMwst = zeilen.reduce((s, g) => s + g.mwst, 0);
+    const gesamtNetto = zeilen.reduce((s, g) => s + g.netto, 0);
+
+    box.innerHTML = zeilen.map((g) => `
+      <div class="an-row">
+        <div class="an-head">
+          <span class="an-name">${esc(satzLabel(g.satz))}</span>
+          <span class="an-sum">${fmtMoney.format(g.mwst)}</span>
+        </div>
+        <div class="an-sub">Netto ${fmtMoney.format(g.netto)} · ${g.zeilen} ${g.zeilen === 1 ? "Zeile" : "Zeilen"}</div>
+      </div>`).join("") + `
+      <div class="an-total">
+        <span>MwSt gesamt</span>
+        <span>${fmtMoney.format(gesamtMwst)}</span>
+      </div>
+      <div class="an-sub" style="text-align:right">Netto gesamt ${fmtMoney.format(gesamtNetto)}</div>`;
   }
 
   // ---------- Gesamtdarstellung ----------
@@ -1363,7 +1550,7 @@
     const liste = getFiltered();
 
     const total = liste.reduce((s, i) => s + (i.gesamtbetrag || 0), 0);
-    const vat = liste.reduce((s, i) => s + (i.mwst_betrag || 0), 0);
+    const vat = liste.reduce((s, i) => s + summeMwst(i), 0);
     $("statCount").textContent = liste.length;
     $("statTotal").textContent = fmtMoneyShort.format(total);
     $("statVat").textContent = fmtMoneyShort.format(vat);
@@ -1386,7 +1573,7 @@
       const meta = [
         inv.datum ? new Date(inv.datum + "T00:00:00").toLocaleDateString("de-DE") : "ohne Datum",
         inv.rechnungsnummer || null,
-        inv.mwst_betrag != null ? "MwSt " + fmtMoney.format(inv.mwst_betrag) : null
+        mwstMetaText(inv)
       ].filter(Boolean).join(" · ");
       const hatDatei = !!(inv.belegTyp || inv.belegPfad);
       const thumb = hatDatei
@@ -1471,16 +1658,33 @@
   // ---------- Excel ----------
   $("exportBtn").addEventListener("click", () => exportExcel(false));
 
+  // Eine Excel-Zeile je Steuersatz. Der Gesamtbetrag steht nur in der ersten Zeile
+  // eines Belegs, damit sich die Spalte ohne Doppelzählung summieren lässt.
+  const EXCEL_HEADERS = ["Datum", "Lieferant", "Rechnungsnummer", "Kategorie", "MwSt-Satz (%)", "Nettobetrag", "MwSt-Betrag", "Gesamtbetrag", "Währung", "Notizen"];
+  const EXCEL_COLS = [{ wch: 12 }, { wch: 22 }, { wch: 18 }, { wch: 16 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 9 }, { wch: 24 }];
+
+  function excelBelegZeilen(liste, mitMeta) {
+    const rows = [];
+    liste.forEach((i) => {
+      zeilenVon(i).forEach((z, idx) => {
+        const row = [
+          i.datum || "", i.lieferant || "", i.rechnungsnummer || "", i.kategorie || "Ohne Kategorie",
+          z.mwst_satz, z.nettobetrag, z.mwst_betrag,
+          idx === 0 ? i.gesamtbetrag : null,
+          i.waehrung || "", i.notizen || ""
+        ];
+        if (mitMeta) row.push(i.archiveFilename || "", i.erfasstAm || "");
+        rows.push(row);
+      });
+    });
+    return rows;
+  }
+
   async function exportExcel(silent) {
-    const headers = ["Datum", "Lieferant", "Rechnungsnummer", "Nettobetrag", "MwSt-Satz (%)", "MwSt-Betrag", "Gesamtbetrag", "Währung", "Kategorie", "Notizen", "Archivdatei", "Erfasst am"];
-    const rows = invoices.map((i) => [
-      i.datum || "", i.lieferant || "", i.rechnungsnummer || "",
-      i.nettobetrag, i.mwst_satz, i.mwst_betrag, i.gesamtbetrag,
-      i.waehrung || "", i.kategorie || "", i.notizen || "",
-      i.archiveFilename || "", i.erfasstAm || ""
-    ]);
+    const headers = EXCEL_HEADERS.concat(["Archivdatei", "Erfasst am"]);
+    const rows = excelBelegZeilen(invoices, true);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws["!cols"] = [{ wch: 12 }, { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 24 }, { wch: 28 }, { wch: 20 }];
+    ws["!cols"] = EXCEL_COLS.concat([{ wch: 28 }, { wch: 20 }]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Rechnungen");
 
@@ -2178,32 +2382,47 @@
   }
 
   function berichtExcel(liste, titel) {
-    const headers = ["Datum", "Lieferant", "Rechnungsnummer", "Kategorie", "Nettobetrag", "MwSt-Satz (%)", "MwSt-Betrag", "Gesamtbetrag", "Währung", "Notizen"];
-    const rows = liste.map((i) => [
-      i.datum || "", i.lieferant || "", i.rechnungsnummer || "", i.kategorie || "Ohne Kategorie",
-      i.nettobetrag, i.mwst_satz, i.mwst_betrag, i.gesamtbetrag, i.waehrung || "", i.notizen || ""
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet([[titel], [], headers, ...rows]);
-    ws["!cols"] = [{ wch: 12 }, { wch: 24 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 9 }, { wch: 24 }];
+    const ws = XLSX.utils.aoa_to_sheet([[titel], [], EXCEL_HEADERS, ...excelBelegZeilen(liste, false)]);
+    ws["!cols"] = EXCEL_COLS;
 
+    // Auswertung nach Kategorie — Anzahl zählt Belege, nicht Steuerzeilen
     const gruppen = new Map();
     liste.forEach((i) => {
       const key = i.kategorie || "Ohne Kategorie";
       const g = gruppen.get(key) || { anzahl: 0, netto: 0, mwst: 0, gesamt: 0 };
       g.anzahl += 1;
-      g.netto += i.nettobetrag || 0;
-      g.mwst += i.mwst_betrag || 0;
+      g.netto += summeNetto(i);
+      g.mwst += summeMwst(i);
       g.gesamt += i.gesamtbetrag || 0;
       gruppen.set(key, g);
     });
     const zeilen = [...gruppen.entries()].sort((a, b) => b[1].gesamt - a[1].gesamt);
     const summe = (feld) => zeilen.reduce((s, [, g]) => s + g[feld], 0);
+
+    // Auswertung nach MwSt-Satz — hier zählen die Steuerzeilen
+    const saetze = new Map();
+    liste.forEach((i) => zeilenVon(i).forEach((z) => {
+      if (z.mwst_betrag == null && z.nettobetrag == null) return;
+      const key = z.mwst_satz != null ? String(z.mwst_satz) : "ohne";
+      const g = saetze.get(key) || { satz: z.mwst_satz, netto: 0, mwst: 0, zeilen: 0 };
+      g.netto += z.nettobetrag || 0;
+      g.mwst += z.mwst_betrag || 0;
+      g.zeilen += 1;
+      saetze.set(key, g);
+    }));
+    const satzZeilen = [...saetze.values()].sort((a, b) => (b.satz || 0) - (a.satz || 0));
+
     const ws2 = XLSX.utils.aoa_to_sheet([
       [titel], [],
-      ["Kategorie", "Anzahl", "Netto", "MwSt", "Gesamt"],
-      ...zeilen.map(([name, g]) => [name, g.anzahl, g.netto, g.mwst, g.gesamt]),
-      [],
-      ["Summe", liste.length, summe("netto"), summe("mwst"), summe("gesamt")]
+      ["Nach Kategorie"],
+      ["Kategorie", "Belege", "Netto", "MwSt", "Gesamt"],
+      ...zeilen.map(([name, g]) => [name, g.anzahl, r2(g.netto), r2(g.mwst), r2(g.gesamt)]),
+      ["Summe", liste.length, r2(summe("netto")), r2(summe("mwst")), r2(summe("gesamt"))],
+      [], [],
+      ["Nach MwSt-Satz"],
+      ["MwSt-Satz (%)", "Zeilen", "Netto", "MwSt", ""],
+      ...satzZeilen.map((g) => [g.satz != null ? g.satz : "ohne Satz", g.zeilen, r2(g.netto), r2(g.mwst), ""]),
+      ["Summe", satzZeilen.reduce((s, g) => s + g.zeilen, 0), r2(satzZeilen.reduce((s, g) => s + g.netto, 0)), r2(satzZeilen.reduce((s, g) => s + g.mwst, 0)), ""]
     ]);
     ws2["!cols"] = [{ wch: 20 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 13 }];
 
@@ -2313,6 +2532,7 @@
   // ---------- Start ----------
   sortInvoices();
   fillCategorySelect(f.kategorie, "");
+  renderTaxRows([{}]);
   render();
   refreshSyncSettingsUi();
   setSyncState("idle");

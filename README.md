@@ -43,6 +43,34 @@ Daten löschen) steckt hinter dem Zahnrad oben rechts.
    - Die Ordnerverbindung gilt pro Browser-Sitzung (Tab-Neuladen erfordert erneutes Auswählen).
 4. "Kamera" bzw. "Galerie" antippen, "Rechnung auslesen" klicken, Felder prüfen, "Speichern".
 
+## Mehrere MwSt-Sätze pro Rechnung
+
+Eine Rechnung kann mehrere Steuersätze enthalten (z.B. Supermarkt mit 7 % und 19 %). Dafür trägt
+jeder Beleg ein Array **`steuerzeilen`** mit je einem Eintrag pro Satz:
+
+```json
+"steuerzeilen": [
+  { "mwst_satz": 19, "nettobetrag": 84.03, "mwst_betrag": 15.97 },
+  { "mwst_satz": 7,  "nettobetrag": 46.73, "mwst_betrag": 3.27 }
+]
+```
+
+- **Geteilt** über alle Zeilen einer Rechnung: Foto/PDF, Lieferant, Rechnungsnummer, Datum,
+  Kategorie, Währung und der Gesamtbetrag. **Unterschiedlich** pro Zeile: Satz, Netto, MwSt.
+- **Claude** bekommt `steuerzeilen` als Pflicht-Array im Tool-Schema und legt beim Auslesen
+  automatisch je Satz eine Zeile an. Im Prüfformular lassen sich Zeilen ergänzen und entfernen.
+- Unter den Zeilen steht die laufende Summe. Weicht sie um mehr als 2 Cent vom eingetragenen
+  Gesamtbetrag ab, wird das rot angezeigt — der Gesamtbetrag bleibt aber frei editierbar, weil auf
+  Belegen gerundet wird.
+- **Zählweise:** In Auswertung und Bericht zählt eine Rechnung mit mehreren Sätzen weiterhin als
+  **ein Beleg**. Nur in der MwSt-Aufschlüsselung werden die einzelnen Zeilen gezählt.
+- **Alte Belege** ohne `steuerzeilen` funktionieren unverändert weiter: Sie werden beim Lesen als
+  genau eine Zeile aus den flachen Feldern `nettobetrag` / `mwst_satz` / `mwst_betrag`
+  interpretiert. Eine Migration ist nicht nötig, und die Dateien werden nicht umgeschrieben.
+- Beim Speichern werden die flachen Felder als **abgeleitete Summen** mitgeschrieben
+  (`nettobetrag` und `mwst_betrag` als Gesamtsumme, `mwst_satz` nur bei genau einem Satz). Das hält
+  die Excel-Zeile lesbar und Belege für ältere App-Stände interpretierbar.
+
 ## Kategorien und Auswertung
 
 Es gibt genau vier feste Kategorien: **Mechatronik**, **Pension**, **Privat**, **HW**.
@@ -56,8 +84,9 @@ Es gibt genau vier feste Kategorien: **Mechatronik**, **Pension**, **Privat**, *
 - Enthält ein alter Beleg eine Kategorie außerhalb der vier, bleibt dieser Wert sichtbar und
   auswählbar, bis er umgestellt wird — es geht also nichts verloren.
 - **Auswertung:** Über der Belegliste stehen zwei Filter (Jahr und Monat). Sie wirken auf die
-  Kennzahlen, die Auswertung und die Liste. Die Auswertung zeigt pro Kategorie Summe, Anzahl,
-  MwSt-Betrag und Anteil, sortiert nach Summe, mit Gesamtzeile.
+  Kennzahlen, die Auswertung und die Liste. Die Auswertung hat zwei Blöcke: **nach Kategorie**
+  (Summe, Anzahl Belege, MwSt, Anteil) und **nach MwSt-Satz** (Netto und MwSt je Satz, Anzahl
+  Steuerzeilen).
 - Der Excel-Export ("Alles als Excel") enthält weiterhin **alle** Belege samt Kategorie,
   unabhängig vom Filter. Für einen Zeitraum gibt es stattdessen den Bericht (siehe unten).
 
@@ -80,8 +109,9 @@ Erzeugt werden **zwei getrennte Dateien**:
 
 - ein **PDF** mit den Originalbelegen des Zeitraums hintereinander — Fotos seitenfüllend auf A4
   zentriert, PDF-Belege mit allen ihren Seiten übernommen;
-- eine **Excel-Datei** mit zwei Blättern: "Auswertung" (Summen je Kategorie mit Netto, MwSt,
-  Gesamt und Gesamtsumme) und "Belege" (alle Einzelbelege des Zeitraums).
+- eine **Excel-Datei** mit zwei Blättern: "Auswertung" (Summen je Kategorie sowie je MwSt-Satz)
+  und "Belege" (eine Zeile je Steuersatz; der Gesamtbetrag steht nur in der ersten Zeile eines
+  Belegs, damit sich die Spalte ohne Doppelzählung summieren lässt).
 
 Belege ohne hinterlegte Datei werden im PDF übersprungen; die Statuszeile nennt deren Anzahl.
 
