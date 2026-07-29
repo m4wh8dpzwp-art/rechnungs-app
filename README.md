@@ -75,9 +75,13 @@ jeder Beleg ein Array **`steuerzeilen`** mit je einem Eintrag pro Satz:
 
 Es gibt genau vier feste Kategorien: **Mechatronik**, **Pension**, **Privat**, **HW**.
 
-- **Automatischer Vorschlag:** Beim Auslesen bekommt Claude die Kategorienliste als feste Auswahl
-  vorgegeben und ordnet die Rechnung der am besten passenden zu. Der Vorschlag ist im Formular
-  vorausgewählt und vor dem Speichern änderbar.
+- **Vorauswahl beim Erfassen:** Direkt unter dem Aufnahmebereich stehen Chips für „Automatisch"
+  und die vier Kategorien — wählbar **vor** dem Foto oder direkt danach. Eine hier getroffene Wahl
+  **gewinnt gegenüber Claudes Vorschlag** und gilt für den aktuellen Beleg; nach dem Speichern
+  steht sie wieder auf „Automatisch", damit sie nicht unbemerkt auf den nächsten Beleg wirkt.
+- **Automatischer Vorschlag:** Steht die Vorauswahl auf „Automatisch", bekommt Claude die
+  Kategorienliste als feste Auswahl vorgegeben und ordnet die Rechnung der am besten passenden zu.
+  In beiden Fällen ist die Kategorie im Prüfformular vor dem Speichern änderbar.
 - **Nachträglich zuordnen:** Jede Belegkarte in der Liste hat ein Kategorie-Feld. Belege ohne
   Kategorie sind an der gestrichelten Umrandung erkennbar. Die Änderung wird sofort gespeichert
   und – bei aktivem Sync – ins Repo übertragen.
@@ -178,6 +182,11 @@ laufen ab (max. ~1 Jahr) und müssen dann neu hinterlegt werden.
 - Mobile-first Oberfläche mit automatischem Hell-/Dunkelmodus (folgt der Systemeinstellung),
   iOS-Feinheiten berücksichtigt: Safe-Area-Ränder, 16px-Eingabefelder (kein Auto-Zoom in Safari),
   Kamera-Direktaufnahme via `capture="environment"`.
+- Bedienung: Tippflächen mindestens 44 px, sichtbare Druckzustände auf Buttons, Chips und
+  Belegkarten, eingeblendete Bottom-Sheets, Ladezustand direkt im Button. Belegkarten sind auch
+  per Tastatur erreichbar (Enter/Leertaste). `prefers-reduced-motion` wird respektiert.
+- Vibration über `navigator.vibrate()` bei Auswahl, Erfolg und Fehler. **iOS Safari unterstützt
+  das nicht** — dort wirkt ausschließlich die optische Rückmeldung.
 - Excel-Erzeugung läuft komplett im Browser über [SheetJS](https://sheetjs.com/)
   (`lib/xlsx.full.min.js`, lokal mitgeliefert, keine CDN-Abhängigkeit).
 - PDF-Erzeugung und -Zusammenführung über [pdf-lib](https://pdf-lib.js.org/)

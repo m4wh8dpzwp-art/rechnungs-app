@@ -126,6 +126,45 @@
     color: var(--text-dim);
   }
 
+  /* ---------- Kategorie-Chips ---------- */
+  .catpick { margin-top: 14px; }
+  .catpick-head {
+    font-size: .78rem;
+    font-weight: 650;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .catpick-head span { font-weight: 500; font-size: .74rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font: inherit;
+    font-size: .88rem;
+    font-weight: 600;
+    padding: 10px 15px;
+    min-height: 44px;
+    border-radius: 99px;
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background .15s, border-color .15s, color .15s, transform .09s ease;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chip:active { transform: scale(.95); }
+  .chip[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-text);
+  }
+  .chip svg { width: 15px; height: 15px; }
+
   /* ---------- Capture ---------- */
   .dropzone {
     border: 1.5px dashed var(--border-strong);
@@ -157,7 +196,7 @@
   }
   .preview-remove {
     position: absolute; top: 8px; right: 8px;
-    width: 32px; height: 32px; border-radius: 50%;
+    width: 42px; height: 42px; min-height: 42px; border-radius: 50%;
     border: none;
     background: rgba(0,0,0,.6);
     color: #fff;
@@ -181,9 +220,18 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    transition: filter .15s, background .15s, border-color .15s;
+    transition: filter .15s, background .15s, border-color .15s, transform .09s ease;
     white-space: nowrap;
+    min-height: 46px;
+    touch-action: manipulation;
   }
+  button:active:not(:disabled) { transform: scale(.97); }
+  button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible,
+  .chip:focus-visible, .item-main:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .btn-lg { padding: 15px 18px; font-size: 1.02rem; min-height: 54px; }
   button svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .btn-primary { background: var(--accent); color: var(--accent-text); }
   .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
@@ -262,7 +310,7 @@
   }
   .item-del {
     flex: 0 0 auto;
-    width: 32px; height: 32px; padding: 0;
+    width: 42px; height: 42px; min-height: 42px; padding: 0;
     border-radius: 50%;
     background: transparent; border: none; color: var(--text-dim);
     display: grid; place-items: center; cursor: pointer;
@@ -275,7 +323,7 @@
   /* ---------- MwSt-Zeilen im Formular ---------- */
   .tax-head, .tax-row {
     display: grid;
-    grid-template-columns: 1fr 1.15fr 1.15fr 30px;
+    grid-template-columns: 1fr 1.12fr 1.12fr 34px;
     gap: 6px;
     align-items: center;
   }
@@ -291,9 +339,9 @@
   .tax-row { margin-bottom: 6px; }
   .tax-row input { padding: 9px 7px; }
   .tax-del {
-    width: 30px; height: 30px; padding: 0;
+    width: 34px; height: 40px; min-height: 40px; padding: 0;
     border: none; background: transparent; color: var(--text-dim);
-    border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    border-radius: 8px; display: grid; place-items: center; cursor: pointer;
   }
   .tax-del:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
   .tax-del:disabled { opacity: .25; cursor: default; }
@@ -486,6 +534,27 @@
   }
   #toast.show { transform: translate(-50%, 0); }
 
+  /* ---------- Bewegung / Rückmeldung ---------- */
+  .backdrop:not(.hidden) { animation: fadeIn .16s ease both; }
+  .backdrop:not(.hidden) > .sheet { animation: sheetIn .28s cubic-bezier(.2, .9, .3, 1) both; }
+  @keyframes fadeIn { from { opacity: 0; } }
+  @keyframes sheetIn { from { transform: translateY(14%); opacity: .4; } }
+
+  .item { transition: transform .09s ease, border-color .15s; }
+  .item:active { transform: scale(.99); }
+  .item-main:active .item-name { color: var(--accent); }
+
+  .dropzone .zone-icon { transition: transform .2s ease; }
+  .dropzone.drag .zone-icon { transform: scale(1.08); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, .backdrop:not(.hidden), .backdrop:not(.hidden) > .sheet {
+      animation: none !important;
+      transition-duration: .01ms !important;
+    }
+    button:active:not(:disabled), .chip:active, .item:active { transform: none; }
+  }
+
   .hidden { display: none !important; }
 </style>
 </head>
@@ -532,17 +601,23 @@
         <div id="previewPdfName" style="margin-top:8px;font-weight:600;color:var(--text)"></div>
         <div style="margin-top:2px">PDF bereit zum Auslesen</div>
       </div>
-      <button class="preview-remove" id="clearImageBtn" aria-label="Bild entfernen">
+      <button class="preview-remove" id="clearImageBtn" aria-label="Beleg entfernen">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
-      <div class="actions">
-        <button class="btn-primary" id="analyzeBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="7"/></svg>
-          Rechnung auslesen
-        </button>
-      </div>
-      <div id="analyzeStatus" class="status"></div>
     </div>
+
+    <div class="catpick">
+      <div class="catpick-head">Kategorie <span id="catHint">— sonst schlägt Claude eine vor</span></div>
+      <div class="chips" id="catChips"></div>
+    </div>
+
+    <div class="actions hidden" id="captureActions">
+      <button class="btn-primary btn-lg" id="analyzeBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="7"/></svg>
+        Rechnung auslesen
+      </button>
+    </div>
+    <div id="analyzeStatus" class="status"></div>
 
     <input type="file" id="fileCamera" accept="image/*" capture="environment" class="hidden">
     <input type="file" id="filePick" accept="image/*,application/pdf" class="hidden">
@@ -843,6 +918,13 @@
     toastTimer = setTimeout(() => toastEl.classList.remove("show"), 3200);
   }
 
+  // Vibration, wo der Browser sie unterstützt (Android/Chrome).
+  // iOS Safari kennt navigator.vibrate nicht — dort trägt die spürbare Rückmeldung
+  // allein die Optik (Druckzustände, Übergänge).
+  function haptik(muster) {
+    if (navigator.vibrate) { try { navigator.vibrate(muster); } catch (e) { /* egal */ } }
+  }
+
   const fmtMoney = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
   const fmtMoneyShort = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 
@@ -1000,7 +1082,33 @@
 
   $("clearImageBtn").addEventListener("click", resetImage);
 
+  // ---------- Kategorie vor dem Auslesen wählen ----------
+  // Leerer Wert bedeutet: Claude schlägt vor. Eine hier getroffene Wahl gewinnt
+  // gegenüber dem Vorschlag und gilt für den aktuell erfassten Beleg.
+  let gewaehlteKategorie = "";
+
+  function renderCatChips() {
+    const chips = [{ wert: "", label: "Automatisch" }].concat(CATEGORIES.map((c) => ({ wert: c, label: c })));
+    $("catChips").innerHTML = chips.map((c) =>
+      `<button type="button" class="chip" data-cat="${esc(c.wert)}" aria-pressed="${c.wert === gewaehlteKategorie}">${esc(c.label)}</button>`
+    ).join("");
+    $("catHint").textContent = gewaehlteKategorie
+      ? "— wird für diesen Beleg übernommen"
+      : "— sonst schlägt Claude eine vor";
+  }
+
+  $("catChips").addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    gewaehlteKategorie = chip.getAttribute("data-cat");
+    haptik(8);
+    renderCatChips();
+  });
+
   function resetImage() {
+    gewaehlteKategorie = "";
+    renderCatChips();
+    $("captureActions").classList.add("hidden");
     current = null;
     if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
     preview.src = "";
@@ -1047,8 +1155,10 @@
       }
       previewWrap.classList.remove("hidden");
       dropzone.classList.add("hidden");
+      $("captureActions").classList.remove("hidden");
       formPanel.classList.add("hidden");
       analyzeStatus.textContent = "";
+      haptik(12);
     } catch (err) {
       console.error(err);
       analyzeStatus.textContent = "Datei konnte nicht gelesen werden: " + err.message;
@@ -1112,8 +1222,10 @@
     }
     if (!current) return;
 
+    const analyzeLabel = analyzeBtn.innerHTML;
     analyzeBtn.disabled = true;
-    analyzeStatus.innerHTML = '<span class="spinner"></span>Rechnung wird ausgelesen…';
+    analyzeBtn.innerHTML = '<span class="spinner"></span>Wird ausgelesen…';
+    analyzeStatus.textContent = "";
     analyzeStatus.className = "status";
 
     try {
@@ -1158,13 +1270,16 @@
       analyzeStatus.textContent = "";
       formPanel.classList.remove("hidden");
       formPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      haptik([12, 40, 12]);
       toast("Daten erkannt — bitte prüfen");
     } catch (err) {
       console.error(err);
       analyzeStatus.textContent = "Fehler: " + err.message;
       analyzeStatus.className = "status err";
+      haptik([60, 50, 60]);
     } finally {
       analyzeBtn.disabled = false;
+      analyzeBtn.innerHTML = analyzeLabel;
     }
   }
 
@@ -1242,7 +1357,8 @@
     f.rechnungsnummer.value = x.rechnungsnummer || "";
     f.gesamt.value = x.gesamtbetrag != null ? x.gesamtbetrag : "";
     f.waehrung.value = x.waehrung || "EUR";
-    fillCategorySelect(f.kategorie, x.kategorie || "");
+    // Eine vor dem Auslesen getroffene Wahl hat Vorrang vor Claudes Vorschlag
+    fillCategorySelect(f.kategorie, gewaehlteKategorie || x.kategorie || "");
     f.notizen.value = x.notizen || "";
     renderTaxRows(
       Array.isArray(x.steuerzeilen) && x.steuerzeilen.length
@@ -1320,8 +1436,10 @@
 
   async function saveInvoice() {
     if (!current) return;
+    const saveLabel = saveInvoiceBtn.innerHTML;
     saveInvoiceBtn.disabled = true;
-    saveStatus.innerHTML = '<span class="spinner"></span>Speichere…';
+    saveInvoiceBtn.innerHTML = '<span class="spinner"></span>Speichere…';
+    saveStatus.textContent = "";
     saveStatus.className = "status";
 
     try {
@@ -1384,6 +1502,7 @@
       if (syncEnabled()) syncNow({ silent: true });
 
       saveStatus.textContent = "";
+      haptik([14, 45, 14]);
       toast(
         via === "ordner" ? "Gespeichert und im Archivordner abgelegt"
         : via === "download" ? "Gespeichert — Datei wurde heruntergeladen"
@@ -1394,8 +1513,10 @@
       console.error(err);
       saveStatus.textContent = "Fehler beim Speichern: " + err.message;
       saveStatus.className = "status err";
+      haptik([60, 50, 60]);
     } finally {
       saveInvoiceBtn.disabled = false;
+      saveInvoiceBtn.innerHTML = saveLabel;
     }
   }
 
@@ -1586,7 +1707,7 @@
       return `
         <div class="item">
           <div class="item-thumb" data-open-id="${inv.id}" title="${hatDatei ? "Beleg ansehen" : "Keine Datei hinterlegt"}">${thumb}</div>
-          <div class="item-main" data-open-id="${inv.id}">
+          <div class="item-main" data-open-id="${inv.id}" role="button" tabindex="0" aria-label="Beleg ${esc(inv.lieferant || "Unbekannt")} ansehen">
             <div class="item-top">
               <span class="item-name">${esc(inv.lieferant || "Unbekannt")}</span>
               <span class="item-amount">${inv.gesamtbetrag != null ? fmtMoney.format(inv.gesamtbetrag) : "—"}</span>
@@ -1620,11 +1741,18 @@
     if (syncEnabled()) syncNow({ silent: true });
   });
 
-  // Klick auf die Belegkarte öffnet die Belegansicht
+  // Klick bzw. Enter/Leertaste auf der Belegkarte öffnet die Belegansicht
   listEl.addEventListener("click", (e) => {
     if (e.target.closest("select") || e.target.closest("button")) return;
     const ziel = e.target.closest("[data-open-id]");
     if (!ziel) return;
+    openLightbox(ziel.getAttribute("data-open-id"));
+  });
+  listEl.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const ziel = e.target.closest("[data-open-id]");
+    if (!ziel) return;
+    e.preventDefault();
     openLightbox(ziel.getAttribute("data-open-id"));
   });
 
@@ -1636,6 +1764,7 @@
     invoices = invoices.filter((i) => i.id !== id);
     persist();
     render();
+    haptik(25);
     toast("Eintrag gelöscht");
     if (rec) queueRemoteDelete(rec);
   });
@@ -2532,6 +2661,7 @@
   // ---------- Start ----------
   sortInvoices();
   fillCategorySelect(f.kategorie, "");
+  renderCatChips();
   renderTaxRows([{}]);
   render();
   refreshSyncSettingsUi();
