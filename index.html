@@ -7,6 +7,9 @@
 <meta name="theme-color" content="#16181c" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Rechnungen">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Rechnungen</title>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/pdf-lib.min.js"></script>
@@ -531,8 +534,27 @@
     box-shadow: var(--shadow);
     transition: transform .28s cubic-bezier(.2,.9,.3,1.2);
     text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
   }
   #toast.show { transform: translate(-50%, 0); }
+  /* Aktionsknopf im Toast (z.B. „Rückgängig") — großzügige Trefferfläche fürs Telefon */
+  #toastAction {
+    flex: none;
+    margin: -8px -6px;
+    padding: 8px 6px;
+    background: none;
+    border: 0;
+    font: inherit;
+    font-weight: 700;
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  #toastAction:active { opacity: .55; }
 
   /* ---------- Bewegung / Rückmeldung ---------- */
   .backdrop:not(.hidden) { animation: fadeIn .16s ease both; }
@@ -830,7 +852,7 @@
   </aside>
 </div>
 
-<div id="toast"></div>
+<div id="toast"><span id="toastText"></span><button type="button" id="toastAction" class="hidden"></button></div>
 
 <script>
 (function () {
@@ -909,14 +931,35 @@
   }
 
   // ---------- Toast ----------
+  // Optional mit Aktion: toast("Gelöscht", { label: "Rückgängig", fn, dauer })
   const toastEl = $("toast");
+  const toastTextEl = $("toastText");
+  const toastActionEl = $("toastAction");
   let toastTimer = null;
-  function toast(msg) {
-    toastEl.textContent = msg;
+  let toastAktion = null;
+
+  function toast(msg, aktion) {
+    toastTextEl.textContent = msg;
+    toastAktion = aktion || null;
+    toastActionEl.textContent = toastAktion ? toastAktion.label : "";
+    toastActionEl.classList.toggle("hidden", !toastAktion);
     toastEl.classList.add("show");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 3200);
+    toastTimer = setTimeout(hideToast, (toastAktion && toastAktion.dauer) || 3200);
   }
+
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toastEl.classList.remove("show");
+    toastAktion = null;
+    toastActionEl.classList.add("hidden");
+  }
+
+  toastActionEl.addEventListener("click", () => {
+    const aktion = toastAktion;
+    hideToast();
+    if (aktion) aktion.fn();
+  });
 
   // Vibration, wo der Browser sie unterstützt (Android/Chrome).
   // iOS Safari kennt navigator.vibrate nicht — dort trägt die spürbare Rückmeldung
@@ -1756,17 +1799,68 @@
     openLightbox(ziel.getAttribute("data-open-id"));
   });
 
-  listEl.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-id]");
-    if (!btn) return;
-    const id = btn.getAttribute("data-id");
-    const rec = invoices.find((i) => i.id === id);
-    invoices = invoices.filter((i) => i.id !== id);
+  // ---------- Löschen mit Rückgängig ----------
+  // Aus der Liste verschwindet der Beleg sofort, die eigentliche Löschung (Datei im Daten-Repo
+  // und lokale Belegdatei) wartet aber ein paar Sekunden. So ist ein Fehlgriff mit dem Daumen
+  // zurücknehmbar, statt den Beleg auf allen Geräten zu verlieren.
+  const UNDO_MS = 8000;
+  let undoStapel = null;   // { records: [...], timer }
+
+  // Solange eine Löschung aussteht, darf der Sync die zugehörige Datei nicht wieder
+  // aus dem Repo herunterladen — sonst käme der Beleg mitten im Zeitfenster zurück.
+  function undoWartet(path) {
+    return !!undoStapel && undoStapel.records.some((r) => r._path === path);
+  }
+
+  function loeschenBestaetigen() {
+    if (!undoStapel) return;
+    const stapel = undoStapel;
+    undoStapel = null;
+    clearTimeout(stapel.timer);
+    stapel.records.forEach(queueRemoteDelete);
+  }
+
+  function loeschenRueckgaengig() {
+    if (!undoStapel) return;
+    const stapel = undoStapel;
+    undoStapel = null;
+    clearTimeout(stapel.timer);
+
+    // Die Datensätze sind unverändert erhalten geblieben, samt _path und _sha — die
+    // Wiederherstellung ist deshalb rein lokal und löst kein erneutes Hochladen aus.
+    stapel.records.forEach((rec) => {
+      if (!invoices.some((i) => i.id === rec.id)) invoices.push(rec);
+    });
+    sortInvoices();
+    persist();
+    render();
+    haptik(12);
+    toast(stapel.records.length === 1 ? "Beleg wiederhergestellt" : `${stapel.records.length} Belege wiederhergestellt`);
+  }
+
+  function loescheMitUndo(records, meldung) {
+    if (!records.length) return;
+    loeschenBestaetigen();   // eine noch offene frühere Löschung wird damit endgültig
+
+    const ids = new Set(records.map((r) => r.id));
+    invoices = invoices.filter((i) => !ids.has(i.id));
     persist();
     render();
     haptik(25);
-    toast("Eintrag gelöscht");
-    if (rec) queueRemoteDelete(rec);
+
+    undoStapel = { records, timer: setTimeout(loeschenBestaetigen, UNDO_MS) };
+    toast(meldung, { label: "Rückgängig", fn: loeschenRueckgaengig, dauer: UNDO_MS });
+  }
+
+  // Tab zu oder App in den Hintergrund: nicht in der Schwebe hängen lassen, sonst wäre der
+  // Beleg lokal weg, im Repo aber noch da — und käme beim nächsten Sync wieder.
+  window.addEventListener("pagehide", loeschenBestaetigen);
+
+  listEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-id]");
+    if (!btn) return;
+    const rec = invoices.find((i) => i.id === btn.getAttribute("data-id"));
+    if (rec) loescheMitUndo([rec], "Beleg gelöscht");
   });
 
   $("clearAllBtn").addEventListener("click", () => {
@@ -1775,12 +1869,7 @@
       ? "Wirklich alle erfassten Rechnungen löschen?\n\nDa die Synchronisierung aktiv ist, werden sie auch im Daten-Repo und damit auf allen verbundenen Geräten entfernt."
       : "Wirklich alle erfassten Rechnungen aus der Liste löschen?";
     if (!confirm(msg)) return;
-    const removed = invoices.slice();
-    invoices = [];
-    persist();
-    render();
-    removed.forEach(queueRemoteDelete);
-    toast("Alle Einträge gelöscht");
+    loescheMitUndo(invoices.slice(), "Alle Einträge gelöscht");
     closeSettings();
   });
 
@@ -2180,6 +2269,7 @@
       const byPath = new Map(invoices.filter((i) => i._path).map((i) => [i._path, i]));
       const toFetch = [];
       remote.forEach((sha, path) => {
+        if (undoWartet(path)) return;   // gerade gelöscht, Rückgängig-Frist läuft noch
         const local = byPath.get(path);
         if (!local || local._sha !== sha) toFetch.push({ path, sha });
       });
@@ -2657,6 +2747,17 @@
       balken.classList.add("hidden");
     }
   });
+
+  // ---------- Service Worker (Offline-Start) ----------
+  // Nur unter https bzw. localhost: im file://-Kontext, in dem lokal getestet wird, gibt es
+  // keine Service Worker — ein Registrierungsversuch würde dort nur einen Konsolenfehler
+  // hinterlassen, den man später leicht für einen echten Fehler der Live-Seite hält.
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js")
+        .catch((err) => console.warn("Service Worker nicht registriert:", err));
+    });
+  }
 
   // ---------- Start ----------
   sortInvoices();

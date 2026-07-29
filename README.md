@@ -4,7 +4,7 @@ Eigenständige Browser-App zum Einlesen und Archivieren von Rechnungen per Foto.
 Kein Server, kein Build-Schritt, keine Installation — einfach `index.html` öffnen.
 
 **Live:** https://m4wh8dpzwp-art.github.io/rechnungs-app/ (mobil-optimiert, per
-"Zum Home-Bildschirm" auf dem iPhone wie eine App nutzbar)
+"Zum Home-Bildschirm" auf dem iPhone wie eine App nutzbar — auch ohne Netz)
 
 ## Funktionsweise
 
@@ -42,6 +42,27 @@ Daten löschen) steckt hinter dem Zahnrad oben rechts.
      Fotos werden stattdessen einzeln heruntergeladen, die Excel-Datei über "Excel exportieren".
    - Die Ordnerverbindung gilt pro Browser-Sitzung (Tab-Neuladen erfordert erneutes Auswählen).
 4. "Kamera" bzw. "Galerie" antippen, "Rechnung auslesen" klicken, Felder prüfen, "Speichern".
+
+## Offline-Nutzung und Home-Bildschirm
+
+Die App bringt ein Web-App-Manifest und einen Service Worker mit und lässt sich damit wie eine
+installierte App verwenden:
+
+- **iPhone/Safari:** Live-URL öffnen → Teilen → "Zum Home-Bildschirm". Die App startet danach
+  ohne Browserleiste und mit eigenem Icon.
+- **Desktop-Chromium:** In der Adressleiste erscheint ein Installationssymbol.
+
+**Ohne Netz** startet die App weiterhin und zeigt Belegliste, Auswertung und alle bereits lokal
+vorliegenden Belege. Was zwingend eine Verbindung braucht, meldet sich mit einem eigenen Fehler:
+das **Auslesen** über die Claude-API und der **Abgleich** mit GitHub. Offline erfasste Belege
+bleiben in der Warteschlange und gehen beim nächsten Sync raus.
+
+Die Zwischenspeicherung ist bewusst zweigeteilt: `index.html` wird **immer zuerst aus dem Netz**
+geholt — die gesamte App steckt in dieser einen Datei und ändert sich oft, eine veraltete Kopie
+wäre schlimmer als eine Sekunde Wartezeit. Bibliotheken und Icons kommen dagegen zuerst aus dem
+Cache. Ein normales Neuladen genügt also, um eine neue Version zu bekommen. Aufrufe an
+`api.anthropic.com` und `api.github.com` laufen unangetastet durch und werden nie
+zwischengespeichert.
 
 ## Mehrere MwSt-Sätze pro Rechnung
 
@@ -119,12 +140,26 @@ Erzeugt werden **zwei getrennte Dateien**:
 
 Belege ohne hinterlegte Datei werden im PDF übersprungen; die Statuszeile nennt deren Anzahl.
 
+## Löschen und Rückgängig
+
+Ein Beleg verschwindet beim Antippen des ✕ sofort aus der Liste, tatsächlich gelöscht wird er
+aber erst **acht Sekunden später**. Solange steht im Hinweis am unteren Rand ein
+**"Rückgängig"** — ein Fehlgriff mit dem Daumen kostet also nichts.
+
+- Wiederhergestellt wird der vollständige Beleg samt Originaldatei, Kategorie und Sync-Zustand.
+  Weil dabei nichts verändert wurde, löst das Zurückholen auch kein erneutes Hochladen aus.
+- Erst nach Ablauf der Frist werden die Datei im Daten-Repo und die lokal gespeicherte
+  Belegdatei entfernt. Wird die App vorher geschlossen oder in den Hintergrund geschickt, wird
+  die Löschung sofort ausgeführt — sie bleibt also nie in der Schwebe.
+- Läuft in diesen Sekunden ein Abgleich, holt er den gelöschten Beleg **nicht** wieder aus dem
+  Repo zurück.
+- "Alle Einträge löschen" hat zusätzlich zum Bestätigungsdialog dasselbe Rückgängig.
+
 ## Synchronisierung zwischen Geräten (optional)
 
 Ohne Einrichtung bleiben alle Daten nur auf dem jeweiligen Gerät. Wer dieselbe Belegliste auf
 PC und iPhone haben will, kann sie über ein **privates GitHub-Repo** abgleichen. Synchronisiert
-werden nur die Rechnungsdaten (Text) — **Fotos bleiben lokal** und werden weiterhin als Datei
-abgelegt.
+werden die Rechnungsdaten **und** die Originalbelege (Fotos/PDFs).
 
 **Einrichtung:**
 
@@ -152,7 +187,8 @@ abgelegt.
   **Blobs-API** (`/git/blobs/<sha>`), da die Contents-API Inhalte nur bis 1 MB ausliefert.
 - Heruntergeladen werden Belegdateien erst bei Bedarf (Belegansicht oder Bericht) und dann lokal
   zwischengespeichert — ein Abgleich lädt also nicht das ganze Archiv.
-- Beim Löschen eines Belegs werden Datenzeile und Belegdatei entfernt.
+- Beim Löschen eines Belegs werden Datenzeile und Belegdatei entfernt — nach Ablauf der
+  Rückgängig-Frist (siehe oben).
 - **Schutz vor Datenverlust:** Fehlt beim Abgleich auf einmal ein Großteil der Belege im Repo
   (z.B. falsches Repo verbunden), werden sie **nicht** lokal gelöscht; stattdessen erscheint ein
   Hinweis in der Sync-Leiste. Beim Wechsel auf ein anderes Repo werden gespeicherte Pfade
@@ -187,6 +223,9 @@ laufen ab (max. ~1 Jahr) und müssen dann neu hinterlegt werden.
   per Tastatur erreichbar (Enter/Leertaste). `prefers-reduced-motion` wird respektiert.
 - Vibration über `navigator.vibrate()` bei Auswahl, Erfolg und Fehler. **iOS Safari unterstützt
   das nicht** — dort wirkt ausschließlich die optische Rückmeldung.
+- Offline-Fähigkeit über einen Service Worker (`sw.js`) samt Web-App-Manifest
+  (`manifest.webmanifest`) und eigenen Icons (`icons/`). Registriert wird der Worker nur unter
+  `https` bzw. `localhost` — beim lokalen Öffnen per `file://` gibt es keine Service Worker.
 - Excel-Erzeugung läuft komplett im Browser über [SheetJS](https://sheetjs.com/)
   (`lib/xlsx.full.min.js`, lokal mitgeliefert, keine CDN-Abhängigkeit).
 - PDF-Erzeugung und -Zusammenführung über [pdf-lib](https://pdf-lib.js.org/)
