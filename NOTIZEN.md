@@ -4,7 +4,7 @@ Interne Arbeitsnotiz zum Wiedereinstieg. Die Nutzer-Dokumentation steht in [READ
 hier steht nur, was dort **nicht** drinsteht: Architekturentscheidungen, offene Punkte,
 Eigenheiten der Testumgebung.
 
-Stand: 29.07.2026, Commit `b989cff`
+Stand: 30.07.2026, Commit `24d2801`
 
 ---
 
@@ -63,7 +63,8 @@ synchronisiert, Felder mit Unterstrich sind rein lokal:
   "mwst_betrag": 19.24,                //   mwst_satz nur bei genau einem Satz, sonst null
   "mwst_satz": null,
   "gesamtbetrag": 150,
-  "waehrung": "EUR",
+  "waehrung": "EUR",                    // normalisiert auf Großschreibung beim Speichern
+  "wechselkurs": null,                  // nur bei Fremdwährung gesetzt: 1 waehrung = wechselkurs EUR
   "kategorie": "Privat",
   "notizen": "",
   "belegTyp": "image/jpeg",            // oder application/pdf
@@ -167,6 +168,52 @@ kommen. Achtung, `fetch(..., {cache:'no-store'})` beweist dabei gar nichts, das 
 HTTP-Cache und läuft weiterhin durch den Service Worker. Für den Beweis eine **nicht
 gecachte** Adresse anfragen; erst deren `TypeError` zeigt, dass wirklich kein Server da ist.
 
+## Fremdwährungen
+
+**Der ursprüngliche Bug:** `fmtMoney` (`Intl.NumberFormat` mit `currency: "EUR"`) war fest verdrahtet
+und wurde für **jeden** Betrag benutzt, unabhängig von `inv.waehrung`. Ein Beleg über 15000 HUF
+erschien als „15.000,00 €" und floss 1:1 in alle Summen ein — sah aus wie eine (falsche)
+automatische Umrechnung, war aber schlicht eine falsche Beschriftung plus ungeprüfte Summierung.
+Der Fehler saß ausschließlich in Anzeige/Aggregation, nicht in der Extraktion: Claude liefert
+`waehrung` und den Rohbetrag schon immer korrekt, bekommt dafür auch weiterhin **kein**
+Wechselkurs-Feld im Tool-Schema — der Kurs kommt bewusst nie von Claude, nur vom Nutzer.
+
+**Kernhelfer** (alle nahe `fmtMoney`/`fmtMoneyShort`):
+- `waehrungCode(inv)` — normalisiert auf Großschreibung/trim, Rückfall auf "EUR". Case-insensitiv,
+  damit auch älteste oder von Hand kleingeschriebene Werte (`"chf"`) korrekt als Fremdwährung
+  erkannt werden.
+- `istFremdwaehrung(inv)` — `waehrungCode(inv) !== "EUR"`.
+- `kursGueltig(inv)` — `wechselkurs` ist eine endliche Zahl `> 0`.
+- `formatBetrag(betrag, inv)` — Originalbetrag, **niemals umgerechnet**: bei Fremdwährung
+  `"15.000,00 HUF"`, sonst normales `fmtMoney`.
+- `eurWert(betrag, inv)` — EUR-Äquivalent für Summen. Liefert **`null`**, nicht `0`, wenn
+  Fremdwährung ohne gültigen Kurs vorliegt — der Unterschied ist zentral: Aufrufer müssen `null`
+  explizit behandeln (zählen als „offen", nicht mitsummieren), ein 0 hätte sich unbemerkt in jede
+  Summe eingeschlichen.
+- Konvention: `wechselkurs` = wie viele EUR entspricht 1 Einheit der Fremdwährung (also
+  `eur = betrag * wechselkurs`) — direkt multiplizierbar, keine Division, keine Richtungsverwechslung.
+
+**Wo `eurWert()` überall greift:** Stat-Leiste, Auswertung nach Kategorie, Auswertung nach
+MwSt-Satz, Bericht-Info-Zeile, `berichtExcel`-Auswertungsblatt, Excel-Spalte „Gesamt (EUR)".
+Jede dieser Stellen zählt zusätzlich mit, wie viele Belege/Zeilen ausgeschlossen wurden, und
+zeigt deren **Originalsumme je Währungscode** an (z.B. „2 Belege ohne Kurs (15.000 HUF, 30 USD)"),
+damit nie nur "irgendwas fehlt" angezeigt wird, sondern was genau.
+
+**Kurs eintragen — zwei Stellen, ein Datenfeld:**
+- Prüfformular (`f_kursFeld`, nur sichtbar bei Fremdwährung, live per `input`-Event auf
+  `f_waehrung`): direkt beim Erfassen, mit Live-Vorschau des EUR-Äquivalents.
+- Belegliste (`.fx-input`, ein `<input>` pro fremdwährungs-Beleg, analog zum bestehenden
+  `cat-select`-Muster): nachträglich, auch für längst gespeicherte Belege. Reagiert auf `change`
+  (nicht `input`), weil jede Änderung ein volles `render()` auslöst — bei `input` würde das
+  Eingabefeld bei jedem Tastendruck neu aufgebaut und den Fokus verlieren.
+- Klick-Guard ergänzt: Der Listen-Klick-Handler, der die Belegansicht öffnet, ignoriert jetzt auch
+  `input`-Elemente (vorher nur `select`/`button`) — sonst hätte ein Tipp ins Kurs-Feld die
+  Lightbox aufgerissen.
+
+**Bewusst NICHT gebaut:** automatische Kursabfrage (z.B. via Wechselkurs-API). Der Nutzer wollte
+ausdrücklich reine manuelle Eingabe — kein zusätzlicher Netzaufruf, keine Abhängigkeit von einem
+weiteren Fremddienst, kein Cache-/Aktualitäts-Problem für Kurse.
+
 ---
 
 ## Offene Punkte
@@ -251,6 +298,7 @@ Antworten auf Deutsch.
 
 | Commit | Inhalt |
 |---|---|
+| `24d2801` | Arbeitsnotiz zum Projektstand ins Repo aufnehmen |
 | `b989cff` | Löschen mit Rückgängig, Offline-Start als PWA |
 | `5139762` | Kategorie vor dem Auslesen wählbar, griffigere Bedienung |
 | `3467cdf` | Mehrere MwSt-Sätze pro Rechnung |

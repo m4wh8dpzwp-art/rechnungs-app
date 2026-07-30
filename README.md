@@ -92,6 +92,29 @@ jeder Beleg ein Array **`steuerzeilen`** mit je einem Eintrag pro Satz:
   (`nettobetrag` und `mwst_betrag` als Gesamtsumme, `mwst_satz` nur bei genau einem Satz). Das hält
   die Excel-Zeile lesbar und Belege für ältere App-Stände interpretierbar.
 
+## Fremdwährungen
+
+Ein Beleg in einer anderen Währung als EUR wird **nie automatisch umgerechnet**. Der Originalbetrag
+bleibt unverändert und erscheint überall — Prüfformular, Liste, Belegansicht — mit seinem
+Währungscode statt einem €-Zeichen, z.B. „15.000,00 HUF".
+
+- **Wechselkurs manuell eintragen:** Sobald die Währung nicht EUR ist, erscheint ein zusätzliches
+  Feld „Wechselkurs (1 [Währung] = ? €)" — beim Erfassen direkt im Prüfformular, nachträglich
+  direkt in der Belegliste unter der jeweiligen Karte. Es gibt keine automatische Kursabfrage;
+  der Kurs kommt ausschließlich vom Nutzer, mit sofortiger Vorschau des EUR-Äquivalents.
+- **Ohne Kurs keine Summe:** Belege in Fremdwährung ohne hinterlegten Kurs fließen **nicht** in
+  Gesamtsumme, MwSt-Summe, Auswertung nach Kategorie/MwSt-Satz oder den Bericht ein — weder 1:1
+  noch anderweitig geschätzt. Ein Hinweis (z.B. „2 Belege in Fremdwährung ohne Kurs nicht
+  enthalten") macht das an jeder betroffenen Stelle sichtbar, zusammen mit dem Originalbetrag der
+  ausgeschlossenen Belege.
+- **Mit Kurs vollständig enthalten:** Sobald ein Kurs eingetragen ist, zählt der Beleg mit seinem
+  EUR-Äquivalent in allen Summen mit; die Belegkarte zeigt zusätzlich „≈ 50,00 € · Kurs 0,0025".
+- Der Excel-Export enthält je Beleg die Spalten **Wechselkurs** und **Gesamt (EUR)** — Letztere
+  bleibt leer, wenn (noch) kein Kurs hinterlegt ist, damit sich die Spalte ohne Verfälschung
+  aufsummieren lässt.
+- Der Währungscode wird beim Speichern auf Großschreibung normalisiert (`chf` → `CHF`), damit der
+  Vergleich mit „EUR" zuverlässig funktioniert, unabhängig von der Schreibweise beim Eintippen.
+
 ## Kategorien und Auswertung
 
 Es gibt genau vier feste Kategorien: **Mechatronik**, **Pension**, **Privat**, **HW**.

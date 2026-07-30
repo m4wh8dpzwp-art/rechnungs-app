@@ -381,6 +381,28 @@
     color: var(--text-dim);
   }
 
+  /* ---------- Wechselkurs in der Belegkarte ---------- */
+  .fx-row { display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+  .fx-input {
+    width: auto;
+    max-width: 150px;
+    font-size: .75rem;
+    font-weight: 600;
+    padding: 4px 9px;
+    border-radius: 99px;
+    background: transparent;
+    border: 1px dashed var(--border-strong);
+    color: var(--text-dim);
+  }
+  .fx-input.has-value {
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .fx-preview { font-size: .75rem; color: var(--text-dim); }
+  .fx-preview.ok { color: var(--accent); }
+
   /* ---------- Auswertung ---------- */
   .an-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
   .an-row:last-of-type { border-bottom: none; }
@@ -655,6 +677,11 @@
       <div class="field wide"><label for="f_lieferant">Lieferant</label><input type="text" id="f_lieferant" placeholder="—"></div>
       <div class="field field-highlight"><label for="f_gesamt">Gesamt (brutto)</label><input type="number" inputmode="decimal" step="0.01" id="f_gesamt" placeholder="0,00"></div>
       <div class="field"><label for="f_waehrung">Währung</label><input type="text" id="f_waehrung" value="EUR"></div>
+      <div class="field wide hidden" id="f_kursFeld">
+        <label for="f_wechselkurs">Wechselkurs (1 <span id="f_kursWaehrung">FW</span> = ? €)</label>
+        <input type="number" inputmode="decimal" step="any" min="0" id="f_wechselkurs" placeholder="z.B. 0,0025 — leer lassen, wenn noch unbekannt">
+        <div class="status" id="f_kursStatus"></div>
+      </div>
       <div class="field wide">
         <label>MwSt-Zeilen</label>
         <div class="tax-head"><span>Satz %</span><span>Netto</span><span>MwSt</span><span></span></div>
@@ -682,6 +709,7 @@
       <div class="stat"><div class="val" id="statTotal">0 €</div><div class="lbl">Gesamt</div></div>
       <div class="stat"><div class="val" id="statVat">0 €</div><div class="lbl">MwSt</div></div>
     </div>
+    <div class="status hidden" id="statHinweis"></div>
     <div class="period hidden" id="periodFilter">
       <select id="filterJahr" aria-label="Jahr"></select>
       <select id="filterMonat" aria-label="Monat"></select>
@@ -926,7 +954,7 @@
     const zeilen = zeilenVon(inv).filter((z) => z.mwst_betrag != null || z.mwst_satz != null);
     if (!zeilen.length) return null;
     return "MwSt " + zeilen
-      .map((z) => `${satzLabel(z.mwst_satz)}: ${z.mwst_betrag != null ? fmtMoney.format(z.mwst_betrag) : "—"}`)
+      .map((z) => `${satzLabel(z.mwst_satz)}: ${z.mwst_betrag != null ? formatBetrag(z.mwst_betrag, inv) : "—"}`)
       .join(" · ");
   }
 
@@ -970,6 +998,46 @@
 
   const fmtMoney = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
   const fmtMoneyShort = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+
+  // ---------- Fremdwährung ----------
+  // Der Originalbetrag einer Fremdwährungsrechnung wird nie automatisch umgerechnet und nie
+  // stillschweigend als EUR behandelt. Genau das war der Bug: fmtMoney war fest auf "EUR"
+  // codiert und hat jeden Betrag mit einem €-Zeichen versehen, unabhängig von inv.waehrung —
+  // ein Beleg über 15000 HUF erschien also als „15.000,00 €“ und floss 1:1 in die Summen ein.
+  // Ein EUR-Äquivalent entsteht jetzt ausschließlich über einen manuell hinterlegten
+  // Wechselkurs (wechselkurs = wie viele EUR entsprechen 1 Einheit der Fremdwährung).
+  const fmtFremd = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function waehrungCode(inv) {
+    return (inv.waehrung || "EUR").trim().toUpperCase() || "EUR";
+  }
+
+  function istFremdwaehrung(inv) {
+    return waehrungCode(inv) !== "EUR";
+  }
+
+  function kursGueltig(inv) {
+    return typeof inv.wechselkurs === "number" && isFinite(inv.wechselkurs) && inv.wechselkurs > 0;
+  }
+
+  // Originalbetrag, so wie er auf dem Beleg steht — niemals umgerechnet.
+  function formatBetrag(betrag, inv) {
+    if (betrag == null) return "—";
+    return istFremdwaehrung(inv) ? `${fmtFremd.format(betrag)} ${waehrungCode(inv)}` : fmtMoney.format(betrag);
+  }
+
+  // EUR-Äquivalent für Summen/Auswertung. null heißt „nicht umrechenbar“ (Fremdwährung ohne
+  // hinterlegten Kurs) — bewusst kein 0, damit ein fehlender Kurs nie unbemerkt als 0 € in
+  // eine Summe einfließt oder der Betrag stillschweigend übernommen wird.
+  function eurWert(betrag, inv) {
+    if (betrag == null) return null;
+    if (!istFremdwaehrung(inv)) return betrag;
+    return kursGueltig(inv) ? r2(betrag * inv.wechselkurs) : null;
+  }
+
+  function kursText(kurs) {
+    return kurs.toLocaleString("de-DE", { maximumFractionDigits: 6 });
+  }
 
   // ---------- Einstellungen ----------
   const apiKeyInput = $("apiKey");
@@ -1337,6 +1405,37 @@
     notizen: $("f_notizen")
   };
 
+  // Wechselkurs-Feld: nur bei Fremdwährung sichtbar, mit Live-Vorschau des EUR-Äquivalents.
+  // Keine automatische Kursabfrage — der Kurs kommt ausschließlich vom Nutzer.
+  const kursFeld = $("f_kursFeld");
+  const kursWaehrungLabel = $("f_kursWaehrung");
+  const kursInput = $("f_wechselkurs");
+  const kursStatus = $("f_kursStatus");
+
+  function aktualisiereKursFeld() {
+    const fremd = istFremdwaehrung({ waehrung: f.waehrung.value });
+    kursFeld.classList.toggle("hidden", !fremd);
+    if (fremd) kursWaehrungLabel.textContent = waehrungCode({ waehrung: f.waehrung.value });
+    aktualisiereKursPreview();
+  }
+
+  function aktualisiereKursPreview() {
+    if (!istFremdwaehrung({ waehrung: f.waehrung.value })) { kursStatus.textContent = ""; return; }
+    const betrag = parseNum(f.gesamt.value);
+    const kurs = parseNum(kursInput.value);
+    if (betrag == null || kurs == null || kurs <= 0) {
+      kursStatus.textContent = "Ohne Kurs fließt dieser Beleg nicht in die EUR-Summen ein.";
+      kursStatus.className = "status";
+    } else {
+      kursStatus.textContent = `≈ ${fmtMoney.format(r2(betrag * kurs))}`;
+      kursStatus.className = "status ok";
+    }
+  }
+
+  f.waehrung.addEventListener("input", aktualisiereKursFeld);
+  kursInput.addEventListener("input", aktualisiereKursPreview);
+  f.gesamt.addEventListener("input", aktualisiereKursPreview);
+
   const taxRowsEl = $("taxRows");
 
   function taxRowHtml(z) {
@@ -1375,9 +1474,10 @@
 
     taxRowsEl.querySelectorAll(".tax-del").forEach((b) => { b.disabled = taxRowsEl.children.length <= 1; });
 
+    const fw = { waehrung: f.waehrung.value };
     const el = $("taxSum");
-    el.textContent = `Netto ${fmtMoney.format(netto)} · MwSt ${fmtMoney.format(mwst)} · Brutto ${fmtMoney.format(summe)}`
-      + (abweichung ? ` — weicht vom Gesamtbetrag ${fmtMoney.format(gesamt)} ab` : "");
+    el.textContent = `Netto ${formatBetrag(netto, fw)} · MwSt ${formatBetrag(mwst, fw)} · Brutto ${formatBetrag(summe, fw)}`
+      + (abweichung ? ` — weicht vom Gesamtbetrag ${formatBetrag(gesamt, fw)} ab` : "");
     el.className = abweichung ? "status err" : "status";
   }
 
@@ -1408,6 +1508,9 @@
         ? x.steuerzeilen
         : [{ mwst_satz: x.mwst_satz, nettobetrag: x.nettobetrag, mwst_betrag: x.mwst_betrag }]
     );
+    // Claude schlägt nie einen Kurs vor (bewusst kein Feld im Extraktions-Tool) — rein manuell.
+    kursInput.value = x.wechselkurs != null ? x.wechselkurs : "";
+    aktualisiereKursFeld();
   }
 
   function normalizeDate(d) {
@@ -1513,6 +1616,11 @@
       const eingegeben = formZeilen();
       const zeilen = eingegeben.length ? eingegeben : [{ mwst_satz: null, nettobetrag: null, mwst_betrag: null }];
 
+      // Währungscode normalisiert speichern (ISO-4217-Konvention), damit der Vergleich mit
+      // "EUR" überall zuverlässig greift, auch wenn z.B. "huf" klein eingetippt wurde.
+      const waehrungWert = waehrungCode({ waehrung: f.waehrung.value });
+      const kursRoh = parseNum(kursInput.value);
+
       const record = {
         belegTyp: typ,
         id: Date.now() + "_" + Math.random().toString(36).slice(2, 8),
@@ -1521,7 +1629,8 @@
         rechnungsnummer: f.rechnungsnummer.value,
         steuerzeilen: zeilen,
         gesamtbetrag: parseNum(f.gesamt.value),
-        waehrung: f.waehrung.value || "EUR",
+        waehrung: waehrungWert,
+        wechselkurs: (waehrungWert !== "EUR" && kursRoh != null && kursRoh > 0) ? kursRoh : null,
         kategorie: f.kategorie.value,
         notizen: f.notizen.value,
         archiveFilename,
@@ -1631,13 +1740,27 @@
     card.classList.remove("hidden");
 
     // Zählt Rechnungen, nicht Steuerzeilen: ein Beleg mit 7 % und 19 % bleibt ein Beleg.
+    // Fremdwährungsbelege ohne hinterlegten Kurs fließen nicht in summe/mwst ein (eurWert
+    // liefert dafür null) — sie werden separat gezählt und ausgewiesen, nie stillschweigend
+    // als 0 € oder 1:1 als EUR mitgerechnet.
     const gruppen = new Map();
+    const offenGesamt = new Map();   // Währungscode -> Summe der nicht umgerechneten Nativbeträge
+    let offenAnzahl = 0;
     liste.forEach((inv) => {
       const key = inv.kategorie || "Ohne Kategorie";
-      const g = gruppen.get(key) || { anzahl: 0, summe: 0, mwst: 0 };
+      const g = gruppen.get(key) || { anzahl: 0, summe: 0, mwst: 0, offen: 0 };
       g.anzahl += 1;
-      g.summe += inv.gesamtbetrag || 0;
-      g.mwst += summeMwst(inv);
+
+      const eurGesamt = eurWert(inv.gesamtbetrag, inv);
+      if (eurGesamt == null) {
+        g.offen += 1;
+        offenAnzahl += 1;
+        const code = waehrungCode(inv);
+        offenGesamt.set(code, (offenGesamt.get(code) || 0) + (inv.gesamtbetrag || 0));
+      } else {
+        g.summe += eurGesamt;
+        g.mwst += eurWert(summeMwst(inv), inv) || 0;
+      }
       gruppen.set(key, g);
     });
 
@@ -1649,13 +1772,15 @@
     $("analysisRows").innerHTML = zeilen.map(([name, g]) => {
       const anteil = gesamt > 0 ? Math.round((g.summe / gesamt) * 100) : 0;
       const breite = max > 0 ? Math.max((g.summe / max) * 100, 2) : 0;
+      const teile = [`${g.anzahl} ${g.anzahl === 1 ? "Beleg" : "Belege"}`, `MwSt ${fmtMoney.format(g.mwst)}`, `${anteil}%`];
+      if (g.offen) teile.push(`${g.offen} ${g.offen === 1 ? "ohne Kurs" : "ohne Kurs"}`);
       return `
         <div class="an-row">
           <div class="an-head">
             <span class="an-name">${esc(name)}</span>
             <span class="an-sum">${fmtMoney.format(g.summe)}</span>
           </div>
-          <div class="an-sub">${g.anzahl} ${g.anzahl === 1 ? "Beleg" : "Belege"} · MwSt ${fmtMoney.format(g.mwst)} · ${anteil}%</div>
+          <div class="an-sub">${teile.join(" · ")}</div>
           <div class="an-bar"><i style="width:${breite}%"></i></div>
         </div>`;
     }).join("") + `
@@ -1663,22 +1788,40 @@
         <span>Gesamt</span>
         <span>${fmtMoney.format(gesamt)}</span>
       </div>
-      <div class="an-sub" style="text-align:right">davon MwSt ${fmtMoney.format(gesamtMwst)}</div>`;
+      <div class="an-sub" style="text-align:right">davon MwSt ${fmtMoney.format(gesamtMwst)}</div>`
+      + (offenAnzahl ? `<div class="an-sub" style="text-align:right">${offenAnzahl} ${offenAnzahl === 1 ? "Beleg" : "Belege"} in Fremdwährung ohne Kurs nicht enthalten (${
+          [...offenGesamt].map(([code, summe]) => esc(`${fmtFremd.format(summe)} ${code}`)).join(", ")
+        })</div>` : "");
 
     renderVatBreakdown(liste);
   }
 
   // Aufschlüsselung über alle Steuerzeilen hinweg — hier zählen die Zeilen, nicht die Belege.
+  // Der Kurs gilt pro Beleg, nicht pro Zeile; jede Zeile wird mit dem Kurs ihres Belegs
+  // umgerechnet. Ohne gültigen Kurs bleibt die Zeile außen vor (siehe eurWert).
   function renderVatBreakdown(liste) {
     const gruppen = new Map();
+    const offenGesamt = new Map();
+    let offenZeilen = 0;
+
     liste.forEach((inv) => {
       zeilenVon(inv).forEach((z) => {
         if (z.mwst_betrag == null && z.nettobetrag == null) return;
         const key = z.mwst_satz != null ? String(z.mwst_satz) : "ohne";
-        const g = gruppen.get(key) || { satz: z.mwst_satz, netto: 0, mwst: 0, zeilen: 0 };
-        g.netto += z.nettobetrag || 0;
-        g.mwst += z.mwst_betrag || 0;
+        const g = gruppen.get(key) || { satz: z.mwst_satz, netto: 0, mwst: 0, zeilen: 0, offen: 0 };
         g.zeilen += 1;
+
+        const eurMwst = eurWert(z.mwst_betrag, inv);
+        const eurNetto = eurWert(z.nettobetrag, inv);
+        if (istFremdwaehrung(inv) && !kursGueltig(inv)) {
+          g.offen += 1;
+          offenZeilen += 1;
+          const code = waehrungCode(inv);
+          offenGesamt.set(code, (offenGesamt.get(code) || 0) + (z.mwst_betrag || 0));
+        } else {
+          g.netto += eurNetto || 0;
+          g.mwst += eurMwst || 0;
+        }
         gruppen.set(key, g);
       });
     });
@@ -1699,13 +1842,16 @@
           <span class="an-name">${esc(satzLabel(g.satz))}</span>
           <span class="an-sum">${fmtMoney.format(g.mwst)}</span>
         </div>
-        <div class="an-sub">Netto ${fmtMoney.format(g.netto)} · ${g.zeilen} ${g.zeilen === 1 ? "Zeile" : "Zeilen"}</div>
+        <div class="an-sub">Netto ${fmtMoney.format(g.netto)} · ${g.zeilen} ${g.zeilen === 1 ? "Zeile" : "Zeilen"}${g.offen ? ` · ${g.offen} ohne Kurs` : ""}</div>
       </div>`).join("") + `
       <div class="an-total">
         <span>MwSt gesamt</span>
         <span>${fmtMoney.format(gesamtMwst)}</span>
       </div>
-      <div class="an-sub" style="text-align:right">Netto gesamt ${fmtMoney.format(gesamtNetto)}</div>`;
+      <div class="an-sub" style="text-align:right">Netto gesamt ${fmtMoney.format(gesamtNetto)}</div>`
+      + (offenZeilen ? `<div class="an-sub" style="text-align:right">${offenZeilen} ${offenZeilen === 1 ? "Zeile" : "Zeilen"} in Fremdwährung ohne Kurs nicht enthalten (${
+          [...offenGesamt].map(([code, summe]) => esc(`${fmtFremd.format(summe)} ${code}`)).join(", ")
+        })</div>` : "");
   }
 
   // ---------- Gesamtdarstellung ----------
@@ -1713,11 +1859,20 @@
     renderFilters();
     const liste = getFiltered();
 
-    const total = liste.reduce((s, i) => s + (i.gesamtbetrag || 0), 0);
-    const vat = liste.reduce((s, i) => s + summeMwst(i), 0);
+    let total = 0, vat = 0, offenAnzahl = 0;
+    liste.forEach((i) => {
+      const eurGesamt = eurWert(i.gesamtbetrag, i);
+      if (eurGesamt == null) { offenAnzahl += 1; return; }
+      total += eurGesamt;
+      vat += eurWert(summeMwst(i), i) || 0;
+    });
     $("statCount").textContent = liste.length;
     $("statTotal").textContent = fmtMoneyShort.format(total);
     $("statVat").textContent = fmtMoneyShort.format(vat);
+    $("statHinweis").textContent = offenAnzahl
+      ? `${offenAnzahl} ${offenAnzahl === 1 ? "Beleg" : "Belege"} in Fremdwährung ohne Kurs nicht in Gesamt/MwSt enthalten`
+      : "";
+    $("statHinweis").classList.toggle("hidden", !offenAnzahl);
 
     renderAnalysis(liste);
 
@@ -1739,6 +1894,20 @@
         inv.rechnungsnummer || null,
         mwstMetaText(inv)
       ].filter(Boolean).join(" · ");
+      const fremd = istFremdwaehrung(inv);
+      const kursOk = fremd && kursGueltig(inv);
+      const fx = fremd ? `
+        <div class="fx-row">
+          <input type="number" inputmode="decimal" step="any" min="0" class="fx-input${kursOk ? " has-value" : ""}"
+                 data-fx-id="${inv.id}" value="${inv.wechselkurs != null ? inv.wechselkurs : ""}"
+                 placeholder="Kurs (1 ${esc(waehrungCode(inv))} = ? €)"
+                 aria-label="Wechselkurs für ${esc(inv.lieferant || "Beleg")} in ${esc(waehrungCode(inv))}">
+          <span class="fx-preview${kursOk ? " ok" : ""}">${
+            kursOk
+              ? esc(`≈ ${fmtMoney.format(eurWert(inv.gesamtbetrag, inv))} · Kurs ${kursText(inv.wechselkurs)}`)
+              : "ohne Kurs nicht in der Summe"
+          }</span>
+        </div>` : "";
       const hatDatei = !!(inv.belegTyp || inv.belegPfad);
       const thumb = hatDatei
         ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${
@@ -1753,12 +1922,13 @@
           <div class="item-main" data-open-id="${inv.id}" role="button" tabindex="0" aria-label="Beleg ${esc(inv.lieferant || "Unbekannt")} ansehen">
             <div class="item-top">
               <span class="item-name">${esc(inv.lieferant || "Unbekannt")}</span>
-              <span class="item-amount">${inv.gesamtbetrag != null ? fmtMoney.format(inv.gesamtbetrag) : "—"}</span>
+              <span class="item-amount">${esc(formatBetrag(inv.gesamtbetrag, inv))}</span>
             </div>
             <div class="item-meta">${syncEnabled() && (!inv._path || inv._dirty) ? '<span class="item-unsynced" title="Noch nicht synchronisiert"></span>' : ""}${esc(meta)}</div>
             <select class="cat-select${inv.kategorie ? "" : " is-empty"}" data-cat-id="${inv.id}" aria-label="Kategorie">
               ${categoryOptionsHtml(inv.kategorie || "")}
             </select>
+            ${fx}
           </div>
           <button class="item-del" data-id="${inv.id}" aria-label="Eintrag löschen">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -1784,9 +1954,25 @@
     if (syncEnabled()) syncNow({ silent: true });
   });
 
+  // Wechselkurs direkt in der Belegliste eintragen/ändern (auch nachträglich für
+  // Fremdwährungsbelege, die schon ohne Kurs gespeichert wurden).
+  listEl.addEventListener("change", (e) => {
+    const inp = e.target.closest("input.fx-input");
+    if (!inp) return;
+    const rec = invoices.find((i) => i.id === inp.getAttribute("data-fx-id"));
+    if (!rec) return;
+
+    const kurs = parseNum(inp.value);
+    rec.wechselkurs = (kurs != null && kurs > 0) ? kurs : null;
+    rec._dirty = true;
+    persist();
+    render();
+    if (syncEnabled()) syncNow({ silent: true });
+  });
+
   // Klick bzw. Enter/Leertaste auf der Belegkarte öffnet die Belegansicht
   listEl.addEventListener("click", (e) => {
-    if (e.target.closest("select") || e.target.closest("button")) return;
+    if (e.target.closest("select") || e.target.closest("button") || e.target.closest("input")) return;
     const ziel = e.target.closest("[data-open-id]");
     if (!ziel) return;
     openLightbox(ziel.getAttribute("data-open-id"));
@@ -1878,8 +2064,8 @@
 
   // Eine Excel-Zeile je Steuersatz. Der Gesamtbetrag steht nur in der ersten Zeile
   // eines Belegs, damit sich die Spalte ohne Doppelzählung summieren lässt.
-  const EXCEL_HEADERS = ["Datum", "Lieferant", "Rechnungsnummer", "Kategorie", "MwSt-Satz (%)", "Nettobetrag", "MwSt-Betrag", "Gesamtbetrag", "Währung", "Notizen"];
-  const EXCEL_COLS = [{ wch: 12 }, { wch: 22 }, { wch: 18 }, { wch: 16 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 9 }, { wch: 24 }];
+  const EXCEL_HEADERS = ["Datum", "Lieferant", "Rechnungsnummer", "Kategorie", "MwSt-Satz (%)", "Nettobetrag", "MwSt-Betrag", "Gesamtbetrag", "Währung", "Wechselkurs", "Gesamt (EUR)", "Notizen"];
+  const EXCEL_COLS = [{ wch: 12 }, { wch: 22 }, { wch: 18 }, { wch: 16 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 9 }, { wch: 11 }, { wch: 13 }, { wch: 24 }];
 
   function excelBelegZeilen(liste, mitMeta) {
     const rows = [];
@@ -1889,7 +2075,12 @@
           i.datum || "", i.lieferant || "", i.rechnungsnummer || "", i.kategorie || "Ohne Kategorie",
           z.mwst_satz, z.nettobetrag, z.mwst_betrag,
           idx === 0 ? i.gesamtbetrag : null,
-          i.waehrung || "", i.notizen || ""
+          i.waehrung || "",
+          // Wechselkurs und Gesamt (EUR) nur in der ersten Zeile, wie der Gesamtbetrag —
+          // Gesamt (EUR) bleibt leer, wenn Fremdwährung ohne hinterlegten Kurs vorliegt.
+          idx === 0 && istFremdwaehrung(i) ? (i.wechselkurs != null ? i.wechselkurs : null) : null,
+          idx === 0 ? eurWert(i.gesamtbetrag, i) : null,
+          i.notizen || ""
         ];
         if (mitMeta) row.push(i.archiveFilename || "", i.erfasstAm || "");
         rows.push(row);
@@ -2458,7 +2649,12 @@
     $("lbTitle").textContent = inv.lieferant || "Unbekannt";
     $("lbSub").textContent = [
       inv.datum ? new Date(inv.datum + "T00:00:00").toLocaleDateString("de-DE") : "ohne Datum",
-      inv.gesamtbetrag != null ? fmtMoney.format(inv.gesamtbetrag) : null,
+      formatBetrag(inv.gesamtbetrag, inv),
+      istFremdwaehrung(inv)
+        ? (kursGueltig(inv)
+            ? `≈ ${fmtMoney.format(eurWert(inv.gesamtbetrag, inv))} (Kurs ${kursText(inv.wechselkurs)})`
+            : "kein Kurs hinterlegt")
+        : null,
       inv.kategorie || "ohne Kategorie"
     ].filter(Boolean).join(" · ");
 
@@ -2560,10 +2756,14 @@
   function updateReportInfo() {
     const { liste } = reportAuswahl();
     const mitDatei = liste.filter((i) => i.belegPfad || i.belegTyp).length;
-    const summe = liste.reduce((s, i) => s + (i.gesamtbetrag || 0), 0);
+    let summe = 0, offen = 0;
+    liste.forEach((i) => {
+      const eur = eurWert(i.gesamtbetrag, i);
+      if (eur == null) offen += 1; else summe += eur;
+    });
     $("repInfo").textContent = liste.length === 0
       ? "Keine Belege in dieser Auswahl."
-      : `${liste.length} ${liste.length === 1 ? "Beleg" : "Belege"} · ${fmtMoney.format(summe)} · ${mitDatei} mit hinterlegter Datei`;
+      : `${liste.length} ${liste.length === 1 ? "Beleg" : "Belege"} · ${fmtMoney.format(summe)}${offen ? ` (${offen} ohne Kurs nicht enthalten)` : ""} · ${mitDatei} mit hinterlegter Datei`;
     $("repStart").disabled = liste.length === 0;
   }
 
@@ -2604,28 +2804,38 @@
     const ws = XLSX.utils.aoa_to_sheet([[titel], [], EXCEL_HEADERS, ...excelBelegZeilen(liste, false)]);
     ws["!cols"] = EXCEL_COLS;
 
-    // Auswertung nach Kategorie — Anzahl zählt Belege, nicht Steuerzeilen
+    // Auswertung nach Kategorie — Anzahl zählt Belege, nicht Steuerzeilen. Beträge in EUR;
+    // Fremdwährung ohne hinterlegten Kurs fließt nicht ein (siehe Spalte "davon ohne Kurs"
+    // bzw. Blatt "Belege" für den jeweiligen Originalbetrag).
     const gruppen = new Map();
     liste.forEach((i) => {
       const key = i.kategorie || "Ohne Kategorie";
-      const g = gruppen.get(key) || { anzahl: 0, netto: 0, mwst: 0, gesamt: 0 };
+      const g = gruppen.get(key) || { anzahl: 0, netto: 0, mwst: 0, gesamt: 0, offen: 0 };
       g.anzahl += 1;
-      g.netto += summeNetto(i);
-      g.mwst += summeMwst(i);
-      g.gesamt += i.gesamtbetrag || 0;
+      const eurGesamt = eurWert(i.gesamtbetrag, i);
+      if (eurGesamt == null) {
+        g.offen += 1;
+      } else {
+        g.netto += eurWert(summeNetto(i), i) || 0;
+        g.mwst += eurWert(summeMwst(i), i) || 0;
+        g.gesamt += eurGesamt;
+      }
       gruppen.set(key, g);
     });
     const zeilen = [...gruppen.entries()].sort((a, b) => b[1].gesamt - a[1].gesamt);
     const summe = (feld) => zeilen.reduce((s, [, g]) => s + g[feld], 0);
+    const offenGesamt = zeilen.reduce((s, [, g]) => s + g.offen, 0);
 
-    // Auswertung nach MwSt-Satz — hier zählen die Steuerzeilen
+    // Auswertung nach MwSt-Satz — hier zählen die Steuerzeilen, Kurs gilt pro Beleg
     const saetze = new Map();
     liste.forEach((i) => zeilenVon(i).forEach((z) => {
       if (z.mwst_betrag == null && z.nettobetrag == null) return;
       const key = z.mwst_satz != null ? String(z.mwst_satz) : "ohne";
       const g = saetze.get(key) || { satz: z.mwst_satz, netto: 0, mwst: 0, zeilen: 0 };
-      g.netto += z.nettobetrag || 0;
-      g.mwst += z.mwst_betrag || 0;
+      if (!(istFremdwaehrung(i) && !kursGueltig(i))) {
+        g.netto += eurWert(z.nettobetrag, i) || 0;
+        g.mwst += eurWert(z.mwst_betrag, i) || 0;
+      }
       g.zeilen += 1;
       saetze.set(key, g);
     }));
@@ -2633,17 +2843,17 @@
 
     const ws2 = XLSX.utils.aoa_to_sheet([
       [titel], [],
-      ["Nach Kategorie"],
-      ["Kategorie", "Belege", "Netto", "MwSt", "Gesamt"],
-      ...zeilen.map(([name, g]) => [name, g.anzahl, r2(g.netto), r2(g.mwst), r2(g.gesamt)]),
-      ["Summe", liste.length, r2(summe("netto")), r2(summe("mwst")), r2(summe("gesamt"))],
+      ["Nach Kategorie — Beträge in EUR; Fremdwährung ohne Kurs nicht enthalten"],
+      ["Kategorie", "Belege", "Netto", "MwSt", "Gesamt", "davon ohne Kurs"],
+      ...zeilen.map(([name, g]) => [name, g.anzahl, r2(g.netto), r2(g.mwst), r2(g.gesamt), g.offen || ""]),
+      ["Summe", liste.length, r2(summe("netto")), r2(summe("mwst")), r2(summe("gesamt")), offenGesamt || ""],
       [], [],
-      ["Nach MwSt-Satz"],
+      ["Nach MwSt-Satz — Beträge in EUR; Fremdwährung ohne Kurs nicht enthalten"],
       ["MwSt-Satz (%)", "Zeilen", "Netto", "MwSt", ""],
       ...satzZeilen.map((g) => [g.satz != null ? g.satz : "ohne Satz", g.zeilen, r2(g.netto), r2(g.mwst), ""]),
       ["Summe", satzZeilen.reduce((s, g) => s + g.zeilen, 0), r2(satzZeilen.reduce((s, g) => s + g.netto, 0)), r2(satzZeilen.reduce((s, g) => s + g.mwst, 0)), ""]
     ]);
-    ws2["!cols"] = [{ wch: 20 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 13 }];
+    ws2["!cols"] = [{ wch: 20 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 14 }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws2, "Auswertung");
