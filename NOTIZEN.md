@@ -4,7 +4,7 @@ Interne Arbeitsnotiz zum Wiedereinstieg. Die Nutzer-Dokumentation steht in [READ
 hier steht nur, was dort **nicht** drinsteht: Architekturentscheidungen, offene Punkte,
 Eigenheiten der Testumgebung.
 
-Stand: 30.07.2026, Commit `24d2801`
+Stand: 30.07.2026, Commit `8cf85e9`
 
 ---
 
@@ -298,6 +298,7 @@ Antworten auf Deutsch.
 
 | Commit | Inhalt |
 |---|---|
+| `8cf85e9` | Fremdwährungen: Umrechnungs-Bug fixen, Wechselkurs-Feld ergänzen |
 | `24d2801` | Arbeitsnotiz zum Projektstand ins Repo aufnehmen |
 | `b989cff` | Löschen mit Rückgängig, Offline-Start als PWA |
 | `5139762` | Kategorie vor dem Auslesen wählbar, griffigere Bedienung |

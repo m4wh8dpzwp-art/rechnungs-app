@@ -456,6 +456,69 @@
   .lb-body iframe { width: 100%; height: 62vh; border: 0; background: #fff; }
   .lb-note { padding: 32px 18px; text-align: center; color: var(--text-dim); font-size: .88rem; }
 
+  /* ---------- Rechnungsdetails in der Belegansicht (ausklappbar) ---------- */
+  .lb-details {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .lb-details > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    min-height: 44px;   /* Tippfläche wie bei den übrigen Bedienelementen */
+    font-size: .85rem;
+    font-weight: 620;
+  }
+  .lb-details > summary::-webkit-details-marker { display: none; }
+  .lb-details > summary::after {
+    content: "";
+    width: 7px; height: 7px;
+    margin-left: auto;
+    border-right: 2px solid var(--text-dim);
+    border-bottom: 2px solid var(--text-dim);
+    transform: rotate(45deg);
+    transition: transform .18s;
+  }
+  .lb-details[open] > summary::after { transform: rotate(-135deg); }
+  .lb-details > summary:active { background: var(--surface); }
+  .lb-details-body { padding: 0 14px 13px; }
+
+  .dt-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 5px 14px;
+    margin: 0;
+    font-size: .85rem;
+  }
+  .dt-grid dt { color: var(--text-dim); white-space: nowrap; }
+  .dt-grid dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+
+  .dt-tax { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
+  .dt-tax-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    font-size: .82rem;
+    padding: 2px 0;
+  }
+  .dt-tax-row > span:not(:first-child) { text-align: right; }
+  .dt-tax-head {
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .dt-tax-sum { font-weight: 650; border-top: 1px solid var(--border); margin-top: 3px; padding-top: 5px; }
+  .dt-hint { font-size: .78rem; color: var(--text-dim); margin-top: 6px; }
+  .dt-hint.err { color: var(--danger); }
+
   /* ---------- Fortschritt ---------- */
   .progress {
     height: 6px; border-radius: 99px;
@@ -844,6 +907,10 @@
       </div>
       <button class="btn-ghost" id="lbClose">Fertig</button>
     </div>
+    <details class="lb-details" id="lbDetails">
+      <summary>Rechnungsdetails</summary>
+      <div class="lb-details-body" id="lbDetailBody"></div>
+    </details>
     <div class="lb-body" id="lbBody"></div>
     <div class="actions" id="lbActions"></div>
   </aside>
@@ -2641,6 +2708,56 @@
   $("lbClose").addEventListener("click", closeLightbox);
   lbBackdrop.addEventListener("click", (e) => { if (e.target === lbBackdrop) closeLightbox(); });
 
+  // Alle Felder eines Belegs als ausklappbare Detailtabelle. Bewusst rein lesend — geändert
+  // wird ein Beleg weiterhin über Kategorie- und Kurs-Feld in der Liste.
+  function belegDetailsHtml(inv) {
+    const fremd = istFremdwaehrung(inv);
+    const netto = summeNetto(inv);
+    const mwst = summeMwst(inv);
+    const brutto = r2(netto + mwst);
+    // Gleiche Toleranz wie im Prüfformular: auf Belegen wird gerundet.
+    const abweichung = inv.gesamtbetrag != null && Math.abs(inv.gesamtbetrag - brutto) > 0.02;
+
+    const rows = [];
+    const add = (label, wert) => rows.push([label, wert]);
+
+    add("Lieferant", inv.lieferant || "—");
+    add("Datum", inv.datum ? new Date(inv.datum + "T00:00:00").toLocaleDateString("de-DE") : "—");
+    add("Rechnungsnr.", inv.rechnungsnummer || "—");
+    add("Kategorie", inv.kategorie || "ohne Kategorie");
+    add("Gesamt (brutto)", formatBetrag(inv.gesamtbetrag, inv));
+    add("Währung", waehrungCode(inv));
+    if (fremd) {
+      add("Wechselkurs", kursGueltig(inv) ? `1 ${waehrungCode(inv)} = ${kursText(inv.wechselkurs)} €` : "nicht hinterlegt");
+      add("Gesamt in EUR", kursGueltig(inv) ? fmtMoney.format(eurWert(inv.gesamtbetrag, inv)) : "ohne Kurs nicht berechenbar");
+    }
+    add("Notizen", inv.notizen || "—");
+    add("Erfasst am", inv.erfasstAm ? new Date(inv.erfasstAm).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+    if (inv.archiveFilename) add("Archivdatei", inv.archiveFilename);
+    if (syncEnabled()) add("Synchronisiert", (!inv._path || inv._dirty) ? "noch offen" : "ja");
+
+    const zeilen = zeilenVon(inv);
+    const taxBlock = `
+      <div class="dt-tax">
+        <div class="dt-tax-row dt-tax-head"><span>Satz</span><span>Netto</span><span>MwSt</span></div>
+        ${zeilen.map((z) => `<div class="dt-tax-row">
+          <span>${esc(satzLabel(z.mwst_satz))}</span>
+          <span>${esc(formatBetrag(z.nettobetrag, inv))}</span>
+          <span>${esc(formatBetrag(z.mwst_betrag, inv))}</span>
+        </div>`).join("")}
+        ${zeilen.length > 1 ? `<div class="dt-tax-row dt-tax-sum">
+          <span>Summe</span>
+          <span>${esc(formatBetrag(netto, inv))}</span>
+          <span>${esc(formatBetrag(mwst, inv))}</span>
+        </div>` : ""}
+        ${abweichung ? `<div class="dt-hint err">Netto + MwSt ergibt ${esc(formatBetrag(brutto, inv))} und weicht damit vom Gesamtbetrag ab.</div>` : ""}
+      </div>`;
+
+    return `<dl class="dt-grid">${
+      rows.map(([label, wert]) => `<dt>${esc(label)}</dt><dd>${esc(wert)}</dd>`).join("")
+    }</dl>${taxBlock}`;
+  }
+
   async function openLightbox(id) {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
@@ -2657,6 +2774,10 @@
         : null,
       inv.kategorie || "ohne Kategorie"
     ].filter(Boolean).join(" · ");
+
+    // Vor dem Laden der Datei füllen: Die Details stehen damit sofort da und bleiben auch
+    // dann sichtbar, wenn gar keine Belegdatei hinterlegt ist oder das Laden scheitert.
+    $("lbDetailBody").innerHTML = belegDetailsHtml(inv);
 
     lbBackdrop.classList.remove("hidden");
     $("lbBody").innerHTML = '<div class="lb-note"><span class="spinner"></span>Beleg wird geladen…</div>';

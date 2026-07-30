@@ -147,6 +147,20 @@ Weg durch die Auslesung (Fotos als Bild, PDFs als Dokument an die Claude-API).
 PDFs eingebettet, jeweils mit "In neuem Tab öffnen" und "Herunterladen". Bei Belegen ohne
 hinterlegte Datei (z.B. vor dieser Version erfasst) lässt sich eine Datei nachtragen.
 
+Über dem Beleg sitzt ein ausklappbarer Block **"Rechnungsdetails"** mit allen erfassten Feldern:
+Lieferant, Datum, Rechnungsnummer, Kategorie, Gesamtbetrag, Währung (bei Fremdwährung zusätzlich
+Wechselkurs und EUR-Äquivalent), Notizen, Erfassungszeitpunkt, Archivdateiname und – bei aktivem
+Sync – ob der Beleg schon übertragen ist. Darunter stehen die **MwSt-Zeilen einzeln** mit Satz,
+Netto und MwSt, bei mehreren Sätzen zusätzlich eine Summenzeile.
+
+- Der Block ist eingeklappt, damit der Beleg selbst im Vordergrund bleibt; einmal aufgeklappt
+  bleibt er es auch beim Öffnen des nächsten Belegs.
+- Ergibt Netto + MwSt nicht den Gesamtbetrag (Toleranz 2 Cent), steht dort ein roter Hinweis mit
+  der tatsächlichen Summe — praktisch beim Abgleich mit dem Foto.
+- Die Details sind **rein lesend** und erscheinen auch dann, wenn zu einem Beleg keine Datei
+  hinterlegt ist oder das Laden fehlschlägt. Änderbar sind weiterhin Kategorie und Wechselkurs
+  direkt in der Belegliste.
+
 **Speicherung:** Originaldateien liegen lokal in IndexedDB — als Warteschlange für den Upload und
 als Offline-Cache. Fotos werden vor dem Speichern auf max. 1600 px Kantenlänge verkleinert und als
 JPEG (Qualität 80 %) abgelegt; das begrenzt das Wachstum des Sync-Repos und senkt zugleich die
