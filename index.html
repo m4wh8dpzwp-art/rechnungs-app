@@ -738,6 +738,7 @@
       </button>
     </div>
     <div id="analyzeStatus" class="status"></div>
+    <div class="progress hidden" id="analyzeProgress"><i></i></div>
 
     <input type="file" id="fileCamera" accept="image/*" capture="environment" class="hidden">
     <input type="file" id="filePick" accept="image/*,application/pdf" class="hidden">
@@ -1385,10 +1386,9 @@
             items: {
               type: "object",
               properties: {
-                seiten: {
-                  type: "array",
-                  items: { type: "number" },
-                  description: "Seitenzahlen ab 1, auf denen diese Rechnung steht. Bei einem einzelnen Foto [1]."
+                istFortsetzung: {
+                  type: "boolean",
+                  description: "true, wenn diese Seite die Fortsetzung der Rechnung von der vorherigen Seite ist (z.B. Seite 2 einer mehrseitigen Hotelrechnung) und damit keine eigene Rechnung beginnt. Sonst false."
                 },
                 datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD. Nimm das Ausstellungsdatum der Rechnung, nicht das Zahlungsziel. Achtung bei ausländischen Belegen: Formate wie 2026.08.07 sind Jahr.Monat.Tag." },
                 lieferant: { type: "string", description: "Name des Rechnungsstellers / Lieferanten / Geschäfts." },
@@ -1498,6 +1498,110 @@
 
   analyzeBtn.addEventListener("click", analyzeInvoice);
 
+  const GEMEINSAME_REGELN = "Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol. "
+    + "Achte besonders auf die Mehrwertsteuer-Aufschlüsselung: Sind mehrere Steuersätze ausgewiesen, lege für jeden Satz eine eigene Zeile in steuerzeilen an. "
+    + "Ordne jede Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu.";
+
+  // Ein API-Aufruf, ein Quellblock. Liefert die Liste der erkannten Rechnungen zurück.
+  async function claudeAnfrage(apiKey, quelle, anweisung) {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: modelSelect.value,
+        max_tokens: 4096,
+        tools: [buildExtractTool()],
+        tool_choice: { type: "tool", name: "extract_invoices" },
+        messages: [{ role: "user", content: [quelle, { type: "text", text: anweisung }] }]
+      })
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`API ${resp.status}: ${errText.slice(0, 200)}`);
+    }
+    const data = await resp.json();
+    const toolBlock = (data.content || []).find((b) => b.type === "tool_use");
+    if (!toolBlock) throw new Error("Keine strukturierten Daten in der Antwort gefunden.");
+    return Array.isArray(toolBlock.input && toolBlock.input.rechnungen) ? toolBlock.input.rechnungen : [];
+  }
+
+  // Zerlegt ein PDF in einseitige PDFs.
+  async function seitenAlsPdfs(blob) {
+    const quelle = await PDFLib.PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true });
+    const seiten = [];
+    for (let i = 0; i < quelle.getPageCount(); i++) {
+      const doc = await PDFLib.PDFDocument.create();
+      const [s] = await doc.copyPages(quelle, [i]);
+      doc.addPage(s);
+      seiten.push(new Blob([await doc.save()], { type: "application/pdf" }));
+    }
+    return seiten;
+  }
+
+  function setzeFortschritt(fertig, gesamt) {
+    const balken = $("analyzeProgress");
+    balken.classList.toggle("hidden", gesamt <= 1);
+    balken.firstElementChild.style.width = gesamt ? Math.round((fertig / gesamt) * 100) + "%" : "0%";
+    analyzeStatus.className = "status";
+    analyzeStatus.textContent = gesamt > 1 ? `Seite ${Math.min(fertig + 1, gesamt)} von ${gesamt} wird gelesen…` : "";
+  }
+
+  // Seitenweise auslesen. Ein Aufruf über das ganze Dokument hat sich als unzuverlässig
+  // erwiesen: Bei einem 16-seitigen Scan gab das Modell nur die erste Rechnung zurück.
+  // Pro Seite kostet kaum mehr — die Seitenbilder machen den Löwenanteil aus und gehen so
+  // wie so über die Leitung — ist aber deutlich treffsicherer.
+  async function lesePdfSeitenweise(apiKey) {
+    const seiten = await seitenAlsPdfs(current.blob);
+    const gesamt = seiten.length;
+    let fertig = 0;
+    setzeFortschritt(0, gesamt);
+
+    const ergebnisse = await mapLimit(seiten.map((b, i) => ({ blob: b, nr: i + 1 })), 3, async (s) => {
+      try {
+        const b64 = await blobToBase64(s.blob);
+        const rechnungen = await claudeAnfrage(
+          apiKey,
+          { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
+          `Das ist Seite ${s.nr} von ${gesamt} eines eingescannten Beleg-Stapels. Lies die Rechnung auf GENAU DIESER Seite aus. `
+            + "Enthält die Seite mehrere eigenständige Belege, lege für jeden eine Position an. "
+            + "Enthält sie gar keinen Beleg (Deckblatt, Rückseite, Leerseite), gib eine leere Liste zurück. "
+            + "Ist diese Seite die Fortsetzung der Rechnung von der vorherigen Seite, setze istFortsetzung auf true. "
+            + GEMEINSAME_REGELN
+        );
+        return { nr: s.nr, rechnungen };
+      } catch (e) {
+        console.warn("Seite konnte nicht gelesen werden:", s.nr, e);
+        return { nr: s.nr, rechnungen: [], fehler: e.message };
+      } finally {
+        setzeFortschritt(++fertig, gesamt);
+      }
+    });
+
+    // In Seitenreihenfolge zusammenführen; Fortsetzungsseiten hängen an der Rechnung davor.
+    ergebnisse.sort((a, b) => a.nr - b.nr);
+    const alle = [];
+    let fehlerhaft = 0;
+    ergebnisse.forEach((e) => {
+      if (e.fehler) fehlerhaft++;
+      e.rechnungen.forEach((r) => {
+        if (r.istFortsetzung && alle.length) {
+          const vorige = alle[alle.length - 1];
+          vorige.seiten = (vorige.seiten || []).concat([e.nr]);
+          return;
+        }
+        r.seiten = [e.nr];
+        alle.push(r);
+      });
+    });
+    return { rechnungen: alle, fehlerhaft, gesamt };
+  }
+
   async function analyzeInvoice() {
     const apiKey = (localStorage.getItem(LS_KEY_API) || apiKeyInput.value).trim();
     if (!apiKey) {
@@ -1514,46 +1618,22 @@
     analyzeStatus.className = "status";
 
     try {
-      // PDFs gehen als document-Block, Fotos als image-Block an die API
-      const quelle = current.typ === "application/pdf"
-        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: current.base64 } }
-        : { type: "image", source: { type: "base64", media_type: current.typ, data: current.base64 } };
+      let gefunden = [];
+      let fehlerhaft = 0;
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({
-          model: modelSelect.value,
-          // Großzügig bemessen: Ein Stapel-Scan kann zwanzig und mehr Rechnungen enthalten,
-          // und jede belegt im Tool-Aufruf gut und gerne 200 Token.
-          max_tokens: 8192,
-          tools: [buildExtractTool()],
-          tool_choice: { type: "tool", name: "extract_invoices" },
-          messages: [{
-            role: "user",
-            content: [
-              quelle,
-              { type: "text", text: "Lies dieses Dokument aus und gib die Daten über das Tool extract_invoices zurück. Wichtig: Das Dokument kann MEHRERE eigenständige Rechnungen enthalten — etwa ein Stapel-Scan mit einem Beleg je Seite. Lege für jede einzelne Rechnung eine eigene Position in rechnungen an und trage unter seiten ein, auf welchen Seiten sie steht. Eine Rechnung, die über mehrere Seiten läuft, bleibt dabei eine einzige Position. Überspringe Seiten ohne Beleg. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol. Achte besonders auf die Mehrwertsteuer-Aufschlüsselung: Sind mehrere Steuersätze ausgewiesen, lege für jeden Satz eine eigene Zeile in steuerzeilen an. Ordne jede Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu." }
-            ]
-          }]
-        })
-      });
-
-      if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(`API ${resp.status}: ${errText.slice(0, 200)}`);
+      if (current.typ === "application/pdf") {
+        const r = await lesePdfSeitenweise(apiKey);
+        gefunden = r.rechnungen;
+        fehlerhaft = r.fehlerhaft;
+      } else {
+        gefunden = await claudeAnfrage(
+          apiKey,
+          { type: "image", source: { type: "base64", media_type: current.typ, data: current.base64 } },
+          "Lies diesen Beleg aus. Sind auf dem Bild mehrere eigenständige Belege zu sehen, lege für jeden eine Position an. " + GEMEINSAME_REGELN
+        );
+        gefunden.forEach((r) => { r.seiten = [1]; });
       }
 
-      const data = await resp.json();
-      const toolBlock = (data.content || []).find((b) => b.type === "tool_use");
-      if (!toolBlock) throw new Error("Keine strukturierten Daten in der Antwort gefunden.");
-
-      const gefunden = Array.isArray(toolBlock.input && toolBlock.input.rechnungen) ? toolBlock.input.rechnungen : [];
       if (!gefunden.length) throw new Error("Es wurde keine Rechnung erkannt.");
 
       // Jede Rechnung bekommt ihre eigenen Seiten als Belegdatei — sonst hinge an allen
@@ -1563,13 +1643,16 @@
       queueIndex = 0;
       zeigeQueueBeleg();
 
-      analyzeStatus.textContent = "";
+      $("analyzeProgress").classList.add("hidden");
+      analyzeStatus.textContent = fehlerhaft ? `${fehlerhaft} Seite(n) konnten nicht gelesen werden.` : "";
+      analyzeStatus.className = fehlerhaft ? "status err" : "status";
       haptik([12, 40, 12]);
       toast(gefunden.length === 1
         ? "Daten erkannt — bitte prüfen"
         : `${gefunden.length} Rechnungen erkannt — bitte einzeln prüfen`);
     } catch (err) {
       console.error(err);
+      $("analyzeProgress").classList.add("hidden");
       analyzeStatus.textContent = "Fehler: " + err.message;
       analyzeStatus.className = "status err";
       haptik([60, 50, 60]);

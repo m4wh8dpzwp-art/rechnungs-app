@@ -222,13 +222,26 @@ sondern ein Konstruktionsfehler — das Tool-Schema beschrieb ein flaches Einzel
 und `max_tokens: 1024` hätte für mehr auch nicht gereicht. Claude sah alle Seiten, durfte aber
 nur eine Rechnung zurückgeben und nahm die erste.
 
-**Jetzt:** Tool heißt `extract_invoices` und liefert ein Array `rechnungen`, jede Position mit
-einem Feld `seiten` (Seitenzahlen ab 1). `max_tokens` auf 8192 — rund 200 Token je Rechnung.
+**Jetzt:** Tool heißt `extract_invoices` und liefert ein Array `rechnungen`.
 
-**Warum ein Aufruf für das ganze Dokument und nicht einer je Seite:** billiger (ein Aufruf statt
-sechzehn) und vor allem richtiger — nur so kann Claude erkennen, dass eine Rechnung über mehrere
-Seiten läuft, und sie zu *einer* Position zusammenfassen. Eine Seitenaufteilung im Vorfeld würde
-mehrseitige Rechnungen zwangsläufig zerschneiden.
+**Erster Anlauf war falsch — ein Aufruf über das ganze Dokument.** Die Überlegung war „ein Aufruf
+statt sechzehn ist billiger, und nur so erkennt Claude mehrseitige Rechnungen". In der Praxis gab
+das Modell bei dem 16-seitigen Scan trotz ausdrücklicher Aufforderung weiterhin **nur die erste
+Rechnung** zurück. Der Kostenvorteil war obendrein eingebildet: Die Seitenbilder machen fast die
+gesamten Eingabetoken aus und gehen so oder so über die Leitung — pro Seite wiederholt sich nur
+der kurze Prompt samt Schema.
+
+**Deshalb jetzt seitenweise** (`lesePdfSeitenweise`): Das PDF wird mit pdf-lib in einseitige PDFs
+zerlegt, jede Seite geht in einem eigenen Aufruf an die API, drei davon parallel über `mapLimit`.
+Fortschrittsbalken `#analyzeProgress` zeigt „Seite 4 von 16".
+
+- **Mehrseitige Rechnungen** löst das Feld `istFortsetzung`: Meldet Claude für eine Seite, dass
+  sie die Rechnung der Vorseite fortsetzt, wird ihre Seitenzahl an den vorigen Eintrag angehängt,
+  statt einen neuen anzulegen. Das Zusammenführen passiert in Seitenreihenfolge, deshalb ist die
+  Parallelität unkritisch.
+- **Leere Seiten** (Deckblatt, Rückseite) geben eine leere Liste zurück und fallen weg.
+- **Eine ausgefallene Seite bricht den Lauf nicht ab** — sie wird gezählt und in der Statuszeile
+  gemeldet, die übrigen Belege kommen durch.
 
 **Belegdatei je Rechnung:** `teileBelegDateien()` schneidet mit pdf-lib (`copyPages`, dieselbe
 Technik wie in `berichtPdf`) aus dem Original für jede Rechnung ihre Seiten heraus. Ohne das

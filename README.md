@@ -144,8 +144,9 @@ Es gibt genau vier feste Kategorien: **Mechatronik**, **Pension**, **Privat**, *
 Weg durch die Auslesung (Fotos als Bild, PDFs als Dokument an die Claude-API).
 
 **Stapel-Scan — mehrere Rechnungen in einer Datei:** Ein mehrseitiges PDF, etwa aus Adobe Scan
-mit einem Beleg je Seite, wird in **einem** API-Aufruf ausgewertet und ergibt **mehrere
-Einträge**. Die erkannten Rechnungen laufen anschließend einzeln durch das Prüfformular:
+mit einem Beleg je Seite, wird **Seite für Seite** ausgewertet und ergibt **mehrere Einträge**.
+Ein Fortschrittsbalken zeigt dabei „Seite 4 von 16". Die erkannten Rechnungen laufen anschließend
+einzeln durch das Prüfformular:
 
 - Oben in der Kopfzeile steht ein Zähler („3 von 15"), der Knopf heißt **„Speichern & weiter"**,
   bis der letzte Beleg erreicht ist.
@@ -153,6 +154,9 @@ Einträge**. Die erkannten Rechnungen laufen anschließend einzeln durch das Pr�
   gar keine Rechnung ist — und geht zum nächsten.
 - Jeder Eintrag bekommt **nur seine eigenen Seiten** als Belegdatei, nicht das ganze Dokument.
   Läuft eine Rechnung über mehrere Seiten, bleibt sie ein Eintrag und erhält alle ihre Seiten.
+- **Seiten ohne Beleg** (Deckblatt, Rückseite, Leerseite) werden übersprungen.
+- Fällt eine einzelne Seite aus, bricht nicht der ganze Lauf ab — die übrigen Belege kommen
+  trotzdem, und die Statuszeile nennt die Anzahl der nicht lesbaren Seiten.
 - Lässt sich ein PDF nicht aufteilen (beschädigt oder geschützt), bekommt der Eintrag die
   Gesamtdatei — lieber zu viel Beleg als gar keiner.
 
