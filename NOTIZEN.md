@@ -153,6 +153,16 @@ Der Toast kann jetzt eine Aktion tragen: `toast(text, { label, fn, dauer })`.
   Datei; eine veraltete Kopie aus dem Cache wäre schlimmer als eine Sekunde Wartezeit. Jede
   erfolgreiche Antwort frischt die Offline-Kopie auf — deshalb muss `CACHE` beim Ändern von
   `index.html` **nicht** hochgezählt werden.
+- **Dabei ist `cache: "no-cache"` entscheidend.** Ein schlichtes `fetch(req)` läuft durch den
+  HTTP-Cache des Browsers, und GitHub Pages setzt auf `index.html` `Cache-Control: max-age=600`.
+  „Zuerst aus dem Netz" war damit in Wahrheit zehn Minuten lang „zuerst aus dem Cache", und ein
+  frisches Deployment kam auf dem Telefon verspätet oder gar nicht an. Gefetcht wird über
+  `req.url` statt über das Request-Objekt: Aus einem Request im Modus `navigate` lässt sich kein
+  neuer Request bauen, das wirft.
+- **Einstellungen → Version** zeigt `document.lastModified` der geladenen Datei, daneben ein
+  Knopf, der mit `?frisch=<zeit>` unter Umgehung aller Zwischenspeicher neu lädt. Ohne diese
+  Anzeige ist von außen nicht feststellbar, welcher Stand gerade läuft — daran sind in der
+  Entwicklung mehrfach Runden verloren gegangen.
 - **`lib/` und `icons/` zuerst aus dem Cache.** Ändern sich praktisch nie.
 - **Fremde Hosts werden nicht angefasst** (`url.origin !== self.location.origin` → kein
   `respondWith`). Claude- und GitHub-Antworten dürfen nie im Cache landen.

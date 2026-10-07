@@ -64,6 +64,10 @@ Cache. Ein normales Neuladen genügt also, um eine neue Version zu bekommen. Auf
 `api.anthropic.com` und `api.github.com` laufen unangetastet durch und werden nie
 zwischengespeichert.
 
+**Welche Fassung läuft gerade?** Zahnrad → Abschnitt „Version" zeigt den Stand der geladenen
+Datei. Daneben lädt „Neueste Fassung laden" die App unter Umgehung aller Zwischenspeicher neu —
+praktisch, wenn eine Änderung auf dem Telefon nicht ankommt.
+
 ## Mehrere MwSt-Sätze pro Rechnung
 
 Eine Rechnung kann mehrere Steuersätze enthalten (z.B. Supermarkt mit 7 % und 19 %). Dafür trägt

@@ -63,8 +63,14 @@ self.addEventListener("fetch", (e) => {
     || url.pathname.endsWith("/index.html");
 
   if (istSeite) {
+    // Wichtig: `cache: "no-cache"` erzwingt eine Rückfrage beim Server. Ein schlichtes
+    // fetch(req) läuft durch den HTTP-Cache des Browsers, und GitHub Pages setzt auf
+    // index.html `max-age=600` — „zuerst aus dem Netz“ wäre damit in Wahrheit zehn Minuten
+    // lang „zuerst aus dem Cache“, und ein frisches Deployment käme verspätet an.
+    // Gefetcht wird über die URL statt über das Request-Objekt: Aus einem Request im Modus
+    // "navigate" lässt sich kein neuer Request bauen, das wirft.
     e.respondWith(
-      fetch(req)
+      fetch(req.url, { cache: "no-cache", credentials: "same-origin" })
         .then((res) => cacheAuffrischen(req, res))
         .catch(() => caches.match(req).then((hit) => hit || caches.match("./index.html")))
     );

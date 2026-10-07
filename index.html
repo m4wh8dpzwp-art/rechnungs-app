@@ -907,6 +907,14 @@
         <div class="status">Löscht nur die Liste in diesem Browser. Bereits gespeicherte Fotos und Excel-Dateien bleiben erhalten.</div>
       </div>
     </div>
+
+    <div class="setting-group">
+      <h3 class="card-title">Version</h3>
+      <div class="card stack">
+        <div class="status" id="appStand">—</div>
+        <button class="btn-secondary" id="reloadBtn">Neueste Fassung laden</button>
+      </div>
+    </div>
   </aside>
 </div>
 
@@ -1154,6 +1162,28 @@
     closeSettings();
   });
   modelSelect.addEventListener("change", () => localStorage.setItem(LS_KEY_MODEL, modelSelect.value));
+
+  // Welcher Stand läuft gerade? Ohne diese Anzeige ist von außen nicht erkennbar, ob nach
+  // einem Deployment noch eine alte Fassung aus einem Cache bedient wird — das hat beim
+  // Entwickeln mehrfach zu Fehlschlüssen geführt. `document.lastModified` kommt aus dem
+  // Last-Modified-Kopf der ausgelieferten Datei, muss also nirgends gepflegt werden.
+  (function zeigeStand() {
+    const d = new Date(document.lastModified);
+    $("appStand").textContent = isNaN(d.getTime())
+      ? "Stand unbekannt"
+      : "Stand: " + d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  })();
+
+  $("reloadBtn").addEventListener("click", async () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) await reg.update();
+      }
+    } catch (e) { console.warn("Service Worker ließ sich nicht aktualisieren:", e); }
+    // Ein frischer Parameter umgeht den HTTP-Cache zuverlässig
+    location.replace(location.pathname + "?frisch=" + Date.now());
+  });
 
   // Beim ersten Start ohne Key direkt die Einstellungen zeigen
   if (!apiKeyInput.value) openSettings();
