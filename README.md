@@ -11,7 +11,7 @@ Kein Server, kein Build-Schritt, keine Installation — einfach `index.html` öf
 1. Du lädst ein Foto/Scan einer Rechnung hoch (Kamera, Galerie oder Drag&Drop am Desktop).
 2. Das Bild wird direkt aus dem Browser an die Claude-API (Vision) geschickt und ausgewertet:
    Datum, Lieferant, Rechnungsnummer, Netto, MwSt-Satz, MwSt-Betrag, Gesamtbetrag, Währung,
-   Kategorie, Notizen.
+   Kategorie, Notizen. **Ein Dokument darf mehrere Rechnungen enthalten** (siehe Stapel-Scan unten).
 3. Du prüfst/korrigierst die erkannten Felder in einem Formular.
 4. Beim Speichern wird:
    - ein Eintrag in die Übersicht aufgenommen (persistiert im Browser),
@@ -142,6 +142,21 @@ Es gibt genau vier feste Kategorien: **Mechatronik**, **Pension**, **Privat**, *
 
 **Erfassen:** Neben Fotos lassen sich auch **PDF-Rechnungen** hochladen; beide gehen denselben
 Weg durch die Auslesung (Fotos als Bild, PDFs als Dokument an die Claude-API).
+
+**Stapel-Scan — mehrere Rechnungen in einer Datei:** Ein mehrseitiges PDF, etwa aus Adobe Scan
+mit einem Beleg je Seite, wird in **einem** API-Aufruf ausgewertet und ergibt **mehrere
+Einträge**. Die erkannten Rechnungen laufen anschließend einzeln durch das Prüfformular:
+
+- Oben in der Kopfzeile steht ein Zähler („3 von 15"), der Knopf heißt **„Speichern & weiter"**,
+  bis der letzte Beleg erreicht ist.
+- **„Überspringen"** verwirft nur den aktuellen Beleg — etwa ein Deckblatt oder eine Seite, die
+  gar keine Rechnung ist — und geht zum nächsten.
+- Jeder Eintrag bekommt **nur seine eigenen Seiten** als Belegdatei, nicht das ganze Dokument.
+  Läuft eine Rechnung über mehrere Seiten, bleibt sie ein Eintrag und erhält alle ihre Seiten.
+- Lässt sich ein PDF nicht aufteilen (beschädigt oder geschützt), bekommt der Eintrag die
+  Gesamtdatei — lieber zu viel Beleg als gar keiner.
+
+Ein einzelnes Foto verhält sich unverändert: eine Rechnung, kein Zähler, Knopf „Speichern".
 
 **Ansehen:** Ein Tipp auf eine Belegkarte öffnet den Originalbeleg in der App — Fotos direkt,
 PDFs eingebettet, jeweils mit "In neuem Tab öffnen" und "Herunterladen". Bei Belegen ohne

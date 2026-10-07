@@ -4,7 +4,7 @@ Interne Arbeitsnotiz zum Wiedereinstieg. Die Nutzer-Dokumentation steht in [READ
 hier steht nur, was dort **nicht** drinsteht: Architekturentscheidungen, offene Punkte,
 Eigenheiten der Testumgebung.
 
-Stand: 30.07.2026, Commit `8cf85e9`
+Stand: 07.10.2026, Commit `44d1c51`
 
 ---
 
@@ -214,6 +214,37 @@ damit nie nur "irgendwas fehlt" angezeigt wird, sondern was genau.
 ausdrücklich reine manuelle Eingabe — kein zusätzlicher Netzaufruf, keine Abhängigkeit von einem
 weiteren Fremddienst, kein Cache-/Aktualitäts-Problem für Kurse.
 
+## Stapel-Scan: mehrere Rechnungen in einer Datei
+
+**Der Ausgangsbefund:** Ein 16-seitiger Adobe-Scan ergab genau einen Eintrag. Kein Erkennungs-,
+sondern ein Konstruktionsfehler — das Tool-Schema beschrieb ein flaches Einzelobjekt,
+`tool_choice` erzwang genau einen Tool-Aufruf, der Prompt sagte „Lies **diese Rechnung** aus",
+und `max_tokens: 1024` hätte für mehr auch nicht gereicht. Claude sah alle Seiten, durfte aber
+nur eine Rechnung zurückgeben und nahm die erste.
+
+**Jetzt:** Tool heißt `extract_invoices` und liefert ein Array `rechnungen`, jede Position mit
+einem Feld `seiten` (Seitenzahlen ab 1). `max_tokens` auf 8192 — rund 200 Token je Rechnung.
+
+**Warum ein Aufruf für das ganze Dokument und nicht einer je Seite:** billiger (ein Aufruf statt
+sechzehn) und vor allem richtiger — nur so kann Claude erkennen, dass eine Rechnung über mehrere
+Seiten läuft, und sie zu *einer* Position zusammenfassen. Eine Seitenaufteilung im Vorfeld würde
+mehrseitige Rechnungen zwangsläufig zerschneiden.
+
+**Belegdatei je Rechnung:** `teileBelegDateien()` schneidet mit pdf-lib (`copyPages`, dieselbe
+Technik wie in `berichtPdf`) aus dem Original für jede Rechnung ihre Seiten heraus. Ohne das
+hinge an allen fünfzehn Einträgen dieselbe sechzehnseitige PDF. Fällt das Aufteilen aus
+(kaputtes PDF, fehlende `seiten`), bekommt der Eintrag die Gesamtdatei — bewusst lieber zu viel
+Beleg als gar keiner.
+
+**Durchlauf statt zweitem Formular:** `belegQueue` + `queueIndex`; das bestehende Prüfformular
+wird nacheinander neu befüllt. Zähler in der Kartenüberschrift, Knopf „Speichern & weiter",
+„Überspringen" verwirft nur den aktuellen Beleg.
+
+**Eine Reihenfolgefalle dabei:** `saveInvoice` sichert zu Beginn `saveInvoiceBtn.innerHTML` und
+stellt es im `finally` wieder her — das überschreibt die Beschriftung, die der Wechsel zum
+nächsten Beleg gerade gesetzt hat. Deshalb läuft `aktualisiereQueueUi()` **nach** dem
+Wiederherstellen im `finally`, nicht nur beim Anzeigen des Belegs.
+
 ---
 
 ## Offene Punkte
@@ -298,6 +329,7 @@ Antworten auf Deutsch.
 
 | Commit | Inhalt |
 |---|---|
+| `44d1c51` | Rechnungsdetails in der Belegansicht anzeigen |
 | `8cf85e9` | Fremdwährungen: Umrechnungs-Bug fixen, Wechselkurs-Feld ergänzen |
 | `24d2801` | Arbeitsnotiz zum Projektstand ins Repo aufnehmen |
 | `b989cff` | Löschen mit Rückgängig, Offline-Start als PWA |

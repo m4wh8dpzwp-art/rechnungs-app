@@ -128,6 +128,19 @@
     letter-spacing: .06em;
     color: var(--text-dim);
   }
+  /* Zähler beim Durchgehen eines Stapel-Scans */
+  .queue-info {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 9px;
+    border-radius: 99px;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--accent);
+    letter-spacing: .02em;
+    text-transform: none;
+    vertical-align: 1px;
+  }
 
   /* ---------- Kategorie-Chips ---------- */
   .catpick { margin-top: 14px; }
@@ -733,7 +746,7 @@
 
   <!-- Prüfen -->
   <section class="card hidden" id="formPanel">
-    <h2 class="card-title">Daten prüfen</h2>
+    <h2 class="card-title">Daten prüfen <span class="queue-info hidden" id="queueInfo"></span></h2>
     <div class="field-grid">
       <div class="field"><label for="f_datum">Datum</label><input type="date" id="f_datum"></div>
       <div class="field"><label for="f_rechnungsnummer">Rechnungsnr.</label><input type="text" id="f_rechnungsnummer" placeholder="—"></div>
@@ -758,7 +771,7 @@
     <div class="actions">
       <button class="btn-primary" id="saveInvoiceBtn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        Speichern
+        <span id="saveBtnText">Speichern</span>
       </button>
       <button class="btn-secondary" id="discardBtn">Verwerfen</button>
     </div>
@@ -1284,6 +1297,9 @@
   });
 
   function resetImage() {
+    belegQueue = [];
+    queueIndex = 0;
+    aktualisiereQueueUi();
     gewaehlteKategorie = "";
     renderCatChips();
     $("captureActions").classList.add("hidden");
@@ -1358,35 +1374,126 @@
       : { type: "string", description: "Grobe Ausgabenkategorie." };
 
     return {
-      name: "extract_invoice",
-      description: "Extrahiert strukturierte Rechnungsdaten aus einem Rechnungsfoto.",
+      name: "extract_invoices",
+      description: "Extrahiert strukturierte Rechnungsdaten aus einem Belegdokument. Ein Dokument kann mehrere eigenständige Rechnungen enthalten.",
       input_schema: {
         type: "object",
         properties: {
-          datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD." },
-          lieferant: { type: "string", description: "Name des Rechnungsstellers / Lieferanten / Geschäfts." },
-          rechnungsnummer: { type: "string", description: "Rechnungs- oder Belegnummer, falls vorhanden." },
-          steuerzeilen: {
+          rechnungen: {
             type: "array",
-            description: "Eine Zeile pro Mehrwertsteuersatz, der auf dem Beleg vorkommt. Viele Belege (z.B. Supermarkt, Baumarkt) weisen mehrere Sätze getrennt aus — dann eine Zeile je Satz anlegen. Bei nur einem Satz genau eine Zeile.",
+            description: "Eine Position je eigenständiger Rechnung. Ein Stapel-Scan mit einem Beleg pro Seite ergibt also mehrere Positionen; eine Rechnung, die über mehrere Seiten läuft, bleibt genau eine Position.",
             items: {
               type: "object",
               properties: {
-                mwst_satz: { type: "number", description: "Mehrwertsteuersatz in Prozent, z.B. 19 oder 7." },
-                nettobetrag: { type: "number", description: "Nettobetrag, der zu diesem Satz gehört." },
-                mwst_betrag: { type: "number", description: "Mehrwertsteuerbetrag, der zu diesem Satz gehört." }
+                seiten: {
+                  type: "array",
+                  items: { type: "number" },
+                  description: "Seitenzahlen ab 1, auf denen diese Rechnung steht. Bei einem einzelnen Foto [1]."
+                },
+                datum: { type: "string", description: "Rechnungsdatum im Format YYYY-MM-DD. Nimm das Ausstellungsdatum der Rechnung, nicht das Zahlungsziel. Achtung bei ausländischen Belegen: Formate wie 2026.08.07 sind Jahr.Monat.Tag." },
+                lieferant: { type: "string", description: "Name des Rechnungsstellers / Lieferanten / Geschäfts." },
+                rechnungsnummer: { type: "string", description: "Rechnungs- oder Belegnummer, falls vorhanden." },
+                steuerzeilen: {
+                  type: "array",
+                  description: "Eine Zeile pro Mehrwertsteuersatz, der auf dem Beleg vorkommt. Viele Belege (z.B. Supermarkt, Baumarkt) weisen mehrere Sätze getrennt aus — dann eine Zeile je Satz anlegen. Bei nur einem Satz genau eine Zeile.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      mwst_satz: { type: "number", description: "Mehrwertsteuersatz in Prozent, z.B. 19 oder 7." },
+                      nettobetrag: { type: "number", description: "Nettobetrag, der zu diesem Satz gehört." },
+                      mwst_betrag: { type: "number", description: "Mehrwertsteuerbetrag, der zu diesem Satz gehört." }
+                    },
+                    required: ["mwst_satz", "mwst_betrag"]
+                  }
+                },
+                gesamtbetrag: { type: "number", description: "Gesamtbetrag / Bruttobetrag dieser einen Rechnung über alle Steuersätze hinweg." },
+                waehrung: { type: "string", description: "Währungscode, z.B. EUR, CHF, USD." },
+                kategorie,
+                notizen: { type: "string", description: "Sonstige Hinweise, z.B. Unsicherheiten bei der Erkennung." }
               },
-              required: ["mwst_satz", "mwst_betrag"]
+              required: ["datum", "lieferant", "rechnungsnummer", "steuerzeilen", "gesamtbetrag", "waehrung", "kategorie"]
             }
-          },
-          gesamtbetrag: { type: "number", description: "Gesamtbetrag / Bruttobetrag der gesamten Rechnung über alle Steuersätze hinweg." },
-          waehrung: { type: "string", description: "Währungscode, z.B. EUR, CHF, USD." },
-          kategorie,
-          notizen: { type: "string", description: "Sonstige Hinweise, z.B. Unsicherheiten bei der Erkennung." }
+          }
         },
-        required: ["datum", "lieferant", "rechnungsnummer", "steuerzeilen", "gesamtbetrag", "waehrung", "kategorie"]
+        required: ["rechnungen"]
       }
     };
+  }
+
+  // ---------- Warteschlange für Stapel-Scans ----------
+  // Ein Dokument kann mehrere Rechnungen enthalten. Die erkannten Rechnungen werden hier
+  // zwischengelagert und einzeln durch das bestehende Prüfformular geschleust, statt das
+  // Formular zu vervielfachen.
+  let belegQueue = [];
+  let queueIndex = 0;
+
+  // Schneidet aus einem mehrseitigen PDF für jede Rechnung ihre eigenen Seiten heraus.
+  // Scheitert das (kaputtes oder geschütztes PDF, fehlende Seitenangabe), bekommt der
+  // Eintrag die Originaldatei — lieber zu viel Beleg als gar keiner.
+  async function teileBelegDateien(rechnungen) {
+    const ganz = { blob: current.blob, typ: current.typ };
+    if (current.typ !== "application/pdf") return rechnungen.map(() => ganz);
+
+    let quelle = null;
+    try {
+      quelle = await PDFLib.PDFDocument.load(await current.blob.arrayBuffer(), { ignoreEncryption: true });
+    } catch (e) {
+      console.warn("PDF ließ sich nicht öffnen, Belege behalten die Gesamtdatei:", e);
+      return rechnungen.map(() => ganz);
+    }
+
+    const anzahl = quelle.getPageCount();
+    const out = [];
+    for (const r of rechnungen) {
+      const seiten = (Array.isArray(r.seiten) ? r.seiten : [])
+        .map((n) => Math.round(n) - 1)
+        .filter((i) => i >= 0 && i < anzahl);
+      if (!seiten.length) { out.push(ganz); continue; }
+      try {
+        const doc = await PDFLib.PDFDocument.create();
+        const kopien = await doc.copyPages(quelle, seiten);
+        kopien.forEach((s) => doc.addPage(s));
+        const bytes = await doc.save();
+        out.push({ blob: new Blob([bytes], { type: "application/pdf" }), typ: "application/pdf" });
+      } catch (e) {
+        console.warn("Seiten konnten nicht herausgelöst werden:", r.seiten, e);
+        out.push(ganz);
+      }
+    }
+    return out;
+  }
+
+  function aktualisiereQueueUi() {
+    const mehrere = belegQueue.length > 1;
+    const info = $("queueInfo");
+    info.textContent = mehrere ? `${queueIndex + 1} von ${belegQueue.length}` : "";
+    info.classList.toggle("hidden", !mehrere);
+
+    const folgtNoch = queueIndex < belegQueue.length - 1;
+    const txt = $("saveBtnText");
+    if (txt) txt.textContent = folgtNoch ? "Speichern & weiter" : "Speichern";
+    $("discardBtn").textContent = folgtNoch ? "Überspringen" : "Verwerfen";
+  }
+
+  function zeigeQueueBeleg() {
+    const eintrag = belegQueue[queueIndex];
+    if (!eintrag) return;
+    fillForm(eintrag.daten || {});
+    aktualisiereQueueUi();
+    formPanel.classList.remove("hidden");
+    formPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // Nächsten Beleg zeigen; war es der letzte, ist der Stapel fertig.
+  function naechsterQueueBeleg() {
+    if (queueIndex < belegQueue.length - 1) {
+      queueIndex++;
+      zeigeQueueBeleg();
+      return true;
+    }
+    belegQueue = [];
+    queueIndex = 0;
+    return false;
   }
 
   analyzeBtn.addEventListener("click", analyzeInvoice);
@@ -1422,14 +1529,16 @@
         },
         body: JSON.stringify({
           model: modelSelect.value,
-          max_tokens: 1024,
+          // Großzügig bemessen: Ein Stapel-Scan kann zwanzig und mehr Rechnungen enthalten,
+          // und jede belegt im Tool-Aufruf gut und gerne 200 Token.
+          max_tokens: 8192,
           tools: [buildExtractTool()],
-          tool_choice: { type: "tool", name: "extract_invoice" },
+          tool_choice: { type: "tool", name: "extract_invoices" },
           messages: [{
             role: "user",
             content: [
               quelle,
-              { type: "text", text: "Lies diese Rechnung/diesen Beleg aus und extrahiere die Felder über das Tool extract_invoice. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol. Achte besonders auf die Mehrwertsteuer-Aufschlüsselung: Sind mehrere Steuersätze ausgewiesen, lege für jeden Satz eine eigene Zeile in steuerzeilen an. Ordne die Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu." }
+              { type: "text", text: "Lies dieses Dokument aus und gib die Daten über das Tool extract_invoices zurück. Wichtig: Das Dokument kann MEHRERE eigenständige Rechnungen enthalten — etwa ein Stapel-Scan mit einem Beleg je Seite. Lege für jede einzelne Rechnung eine eigene Position in rechnungen an und trage unter seiten ein, auf welchen Seiten sie steht. Eine Rechnung, die über mehrere Seiten läuft, bleibt dabei eine einzige Position. Überspringe Seiten ohne Beleg. Beträge als reine Zahlen mit Punkt als Dezimaltrennzeichen, ohne Währungssymbol. Achte besonders auf die Mehrwertsteuer-Aufschlüsselung: Sind mehrere Steuersätze ausgewiesen, lege für jeden Satz eine eigene Zeile in steuerzeilen an. Ordne jede Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu." }
             ]
           }]
         })
@@ -1444,12 +1553,21 @@
       const toolBlock = (data.content || []).find((b) => b.type === "tool_use");
       if (!toolBlock) throw new Error("Keine strukturierten Daten in der Antwort gefunden.");
 
-      fillForm(toolBlock.input || {});
+      const gefunden = Array.isArray(toolBlock.input && toolBlock.input.rechnungen) ? toolBlock.input.rechnungen : [];
+      if (!gefunden.length) throw new Error("Es wurde keine Rechnung erkannt.");
+
+      // Jede Rechnung bekommt ihre eigenen Seiten als Belegdatei — sonst hinge an allen
+      // Einträgen eines Stapel-Scans dieselbe vielseitige PDF.
+      const dateien = await teileBelegDateien(gefunden);
+      belegQueue = gefunden.map((daten, i) => ({ daten, blob: dateien[i].blob, typ: dateien[i].typ }));
+      queueIndex = 0;
+      zeigeQueueBeleg();
+
       analyzeStatus.textContent = "";
-      formPanel.classList.remove("hidden");
-      formPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       haptik([12, 40, 12]);
-      toast("Daten erkannt — bitte prüfen");
+      toast(gefunden.length === 1
+        ? "Daten erkannt — bitte prüfen"
+        : `${gefunden.length} Rechnungen erkannt — bitte einzeln prüfen`);
     } catch (err) {
       console.error(err);
       analyzeStatus.textContent = "Fehler: " + err.message;
@@ -1586,7 +1704,15 @@
     return m ? m[0] : "";
   }
 
-  $("discardBtn").addEventListener("click", resetImage);
+  // Beim Stapel-Scan verwirft der Knopf nur diesen einen Beleg und geht weiter.
+  $("discardBtn").addEventListener("click", () => {
+    if (belegQueue.length > 1 && queueIndex < belegQueue.length - 1) {
+      naechsterQueueBeleg();
+      toast("Beleg übersprungen");
+      return;
+    }
+    resetImage();
+  });
 
   // ---------- Speichern ----------
   const saveInvoiceBtn = $("saveInvoiceBtn");
@@ -1666,8 +1792,11 @@
       let n = 2;
       while (existing.has(archiveFilename)) archiveFilename = `${base}_${n++}.${ext}`;
 
-      const blob = current.blob;
-      const typ = current.typ;
+      // Bei einem Stapel-Scan hängt an jeder Rechnung nur ihre eigene Seite, nicht das
+      // gesamte Dokument.
+      const ausQueue = belegQueue[queueIndex];
+      const blob = ausQueue && ausQueue.blob ? ausQueue.blob : current.blob;
+      const typ = ausQueue && ausQueue.typ ? ausQueue.typ : current.typ;
 
       // Archivordner (Desktop) weiterhin bedienen; heruntergeladen wird nur noch,
       // wenn es weder Ordner noch Sync gibt — sonst liegt die Datei ohnehin im Repo.
@@ -1722,12 +1851,17 @@
 
       saveStatus.textContent = "";
       haptik([14, 45, 14]);
+
+      const offen = belegQueue.length - queueIndex - 1;
       toast(
-        via === "ordner" ? "Gespeichert und im Archivordner abgelegt"
+        offen > 0 ? `Gespeichert — noch ${offen} ${offen === 1 ? "Beleg" : "Belege"}`
+        : via === "ordner" ? "Gespeichert und im Archivordner abgelegt"
         : via === "download" ? "Gespeichert — Datei wurde heruntergeladen"
         : "Gespeichert"
       );
-      resetImage();
+
+      // Beim Stapel-Scan direkt zum nächsten Beleg, sonst Erfassung abschließen
+      if (!naechsterQueueBeleg()) resetImage();
     } catch (err) {
       console.error(err);
       saveStatus.textContent = "Fehler beim Speichern: " + err.message;
@@ -1736,6 +1870,7 @@
     } finally {
       saveInvoiceBtn.disabled = false;
       saveInvoiceBtn.innerHTML = saveLabel;
+      aktualisiereQueueUi();
     }
   }
 
