@@ -2008,6 +2008,7 @@
       };
       setzeSpiegelfelder(record);
       invoices.push(record);
+      sortInvoices();   // sofort einsortieren, sonst steht ein Altbeleg bis zum nächsten Sync am Ende
       persist();
 
       // Originaldatei lokal ablegen (Upload-Warteschlange + Offline-Cache)
@@ -2701,8 +2702,17 @@
     return rec;
   }
 
+  // Sortiert nach Rechnungsdatum, nicht nach Erfassungszeitpunkt. Letzteres führte dazu, dass
+  // nachträglich erfasste Altbelege zwischen aktuellen standen und der Bericht die Belege eines
+  // Monats in willkürlicher Folge aneinanderhängte. Bei gleichem Datum entscheidet die
+  // Erfassungszeit, damit die Reihenfolge stabil bleibt.
   function sortInvoices() {
-    invoices.sort((a, b) => String(a.erfasstAm || a.datum || a.id).localeCompare(String(b.erfasstAm || b.datum || b.id)));
+    const stichtag = (i) => i.datum || String(i.erfasstAm || "").slice(0, 10) || "";
+    invoices.sort((a, b) => {
+      const vgl = stichtag(a).localeCompare(stichtag(b));
+      if (vgl !== 0) return vgl;
+      return String(a.erfasstAm || a.id).localeCompare(String(b.erfasstAm || b.id));
+    });
   }
 
   function queueRemoteDelete(rec) {

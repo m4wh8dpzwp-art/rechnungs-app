@@ -138,6 +138,10 @@ Es gibt genau vier feste Kategorien: **Mechatronik**, **Pension**, **Privat**, *
   und – bei aktivem Sync – ins Repo übertragen.
 - Enthält ein alter Beleg eine Kategorie außerhalb der vier, bleibt dieser Wert sichtbar und
   auswählbar, bis er umgestellt wird — es geht also nichts verloren.
+- **Sortierung:** Belege sind nach **Rechnungsdatum** geordnet, nicht nach Erfassungszeitpunkt.
+  In der Liste steht das Neueste oben; im Bericht und im Excel-Export laufen die Belege
+  chronologisch aufsteigend. Nachträglich erfasste Altbelege sortieren sich also an ihre
+  richtige Stelle ein, statt am Ende zu landen.
 - **Auswertung:** Über der Belegliste stehen zwei Filter (Jahr und Monat). Sie wirken auf die
   Kennzahlen, die Auswertung und die Liste. Die Auswertung hat zwei Blöcke: **nach Kategorie**
   (Summe, Anzahl Belege, MwSt, Anteil) und **nach MwSt-Satz** (Netto und MwSt je Satz, Anzahl
