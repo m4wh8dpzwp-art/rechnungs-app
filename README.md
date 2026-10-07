@@ -156,7 +156,9 @@ einzeln durch das Prüfformular:
   Läuft eine Rechnung über mehrere Seiten, bleibt sie ein Eintrag und erhält alle ihre Seiten.
 - **Seiten ohne Beleg** (Deckblatt, Rückseite, Leerseite) werden übersprungen.
 - Fällt eine einzelne Seite aus, bricht nicht der ganze Lauf ab — die übrigen Belege kommen
-  trotzdem, und die Statuszeile nennt die Anzahl der nicht lesbaren Seiten.
+  trotzdem, und die Statuszeile nennt die Anzahl der nicht lesbaren Seiten. Schlagen *alle*
+  Seiten fehl, zeigt die Statuszeile die tatsächliche Fehlermeldung der API.
+- Läuft die API ins Anfrage-Limit, wartet die App kurz und versucht es erneut (bis zu dreimal).
 - Lässt sich ein PDF nicht aufteilen (beschädigt oder geschützt), bekommt der Eintrag die
   Gesamtdatei — lieber zu viel Beleg als gar keiner.
 

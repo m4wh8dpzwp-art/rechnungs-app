@@ -242,6 +242,12 @@ Fortschrittsbalken `#analyzeProgress` zeigt „Seite 4 von 16".
 - **Leere Seiten** (Deckblatt, Rückseite) geben eine leere Liste zurück und fallen weg.
 - **Eine ausgefallene Seite bricht den Lauf nicht ab** — sie wird gezählt und in der Statuszeile
   gemeldet, die übrigen Belege kommen durch.
+- **Wiederholung bei 429/529/5xx** in `claudeAnfrage`, bis zu drei Versuche mit wachsender Pause
+  und Beachtung von `retry-after`. Beim seitenweisen Lesen gehen schnell hintereinander viele
+  Anfragen raus; ohne das läuft ein Stapel am Anfrage-Limit auf.
+- **Fehler nicht verschlucken:** Schlägt *jede* Seite fehl, wird die erste echte API-Meldung
+  wörtlich angezeigt statt eines pauschalen „keine Rechnung erkannt". Ohne das ist ein solcher
+  Fall von außen nicht eingrenzbar — genau daran ging beim ersten Anlauf eine Runde verloren.
 
 **Belegdatei je Rechnung:** `teileBelegDateien()` schneidet mit pdf-lib (`copyPages`, dieselbe
 Technik wie in `berichtPdf`) aus dem Original für jede Rechnung ihre Seiten heraus. Ohne das
@@ -324,6 +330,11 @@ Getestet wird in der Browser-Pane mit gemocktem `window.fetch` (Claude + GitHub)
 - **Konsolenfehler aus `file://`-Testläufen** tauchen später beim Prüfen der Live-Seite auf; an den
   `file:///C:/...`-Pfaden in der Stacktrace erkennbar. Nicht mit echten Live-Fehlern verwechseln.
 - Nach Tests aufräumen: `localStorage.clear()` **und** `indexedDB.deleteDatabase('rechnungsapp')`.
+- **Der HTTP-Cache des Browsers täuscht beim lokalen Testserver.** Nach dem Austauschen von
+  `index.html` zeigt ein normales Neuladen weiter die alte Fassung — ohne Service Worker, rein
+  über den HTTP-Cache. Das hat einmal zu drei falschen Testergebnissen geführt. Entweder mit
+  Cache-Umgehung laden (`?frisch=<zeit>` an die URL) oder vorher prüfen:
+  `document.documentElement.outerHTML.includes('<marker aus dem neuen Code>')`.
 
 ## Arbeitsweise
 

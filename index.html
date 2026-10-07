@@ -1503,32 +1503,44 @@
     + "Ordne jede Rechnung außerdem der am besten passenden der vorgegebenen Kategorien zu.";
 
   // Ein API-Aufruf, ein Quellblock. Liefert die Liste der erkannten Rechnungen zurück.
+  // Bei Anfrage-Limit (429), Überlastung (529) und Serverfehlern wird mit wachsender Pause
+  // wiederholt — beim seitenweisen Lesen gehen schnell hintereinander viele Anfragen raus.
   async function claudeAnfrage(apiKey, quelle, anweisung) {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
-      body: JSON.stringify({
-        model: modelSelect.value,
-        max_tokens: 4096,
-        tools: [buildExtractTool()],
-        tool_choice: { type: "tool", name: "extract_invoices" },
-        messages: [{ role: "user", content: [quelle, { type: "text", text: anweisung }] }]
-      })
-    });
+    let letzter = "";
+    for (let versuch = 0; versuch < 3; versuch++) {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: modelSelect.value,
+          max_tokens: 4096,
+          tools: [buildExtractTool()],
+          tool_choice: { type: "tool", name: "extract_invoices" },
+          messages: [{ role: "user", content: [quelle, { type: "text", text: anweisung }] }]
+        })
+      });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`API ${resp.status}: ${errText.slice(0, 200)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const toolBlock = (data.content || []).find((b) => b.type === "tool_use");
+        if (!toolBlock) throw new Error("Keine strukturierten Daten in der Antwort gefunden.");
+        return Array.isArray(toolBlock.input && toolBlock.input.rechnungen) ? toolBlock.input.rechnungen : [];
+      }
+
+      const errText = (await resp.text()).slice(0, 300);
+      letzter = `API ${resp.status}: ${errText}`;
+      const nochmal = resp.status === 429 || resp.status === 529 || resp.status >= 500;
+      if (!nochmal || versuch === 2) throw new Error(letzter);
+
+      const kopf = Number(resp.headers.get("retry-after"));
+      await new Promise((r) => setTimeout(r, kopf > 0 ? kopf * 1000 : 1500 * Math.pow(2, versuch)));
     }
-    const data = await resp.json();
-    const toolBlock = (data.content || []).find((b) => b.type === "tool_use");
-    if (!toolBlock) throw new Error("Keine strukturierten Daten in der Antwort gefunden.");
-    return Array.isArray(toolBlock.input && toolBlock.input.rechnungen) ? toolBlock.input.rechnungen : [];
+    throw new Error(letzter + " — auch nach drei Versuchen");
   }
 
   // Zerlegt ein PDF in einseitige PDFs.
@@ -1562,7 +1574,7 @@
     let fertig = 0;
     setzeFortschritt(0, gesamt);
 
-    const ergebnisse = await mapLimit(seiten.map((b, i) => ({ blob: b, nr: i + 1 })), 3, async (s) => {
+    const ergebnisse = await mapLimit(seiten.map((b, i) => ({ blob: b, nr: i + 1 })), 2, async (s) => {
       try {
         const b64 = await blobToBase64(s.blob);
         const rechnungen = await claudeAnfrage(
@@ -1587,8 +1599,9 @@
     ergebnisse.sort((a, b) => a.nr - b.nr);
     const alle = [];
     let fehlerhaft = 0;
+    let ersterFehler = "";
     ergebnisse.forEach((e) => {
-      if (e.fehler) fehlerhaft++;
+      if (e.fehler) { fehlerhaft++; if (!ersterFehler) ersterFehler = `Seite ${e.nr}: ${e.fehler}`; }
       e.rechnungen.forEach((r) => {
         if (r.istFortsetzung && alle.length) {
           const vorige = alle[alle.length - 1];
@@ -1599,7 +1612,7 @@
         alle.push(r);
       });
     });
-    return { rechnungen: alle, fehlerhaft, gesamt };
+    return { rechnungen: alle, fehlerhaft, gesamt, ersterFehler };
   }
 
   async function analyzeInvoice() {
@@ -1620,11 +1633,15 @@
     try {
       let gefunden = [];
       let fehlerhaft = 0;
+      let ersterFehler = "";
+      let gesamtSeiten = 1;
 
       if (current.typ === "application/pdf") {
         const r = await lesePdfSeitenweise(apiKey);
         gefunden = r.rechnungen;
         fehlerhaft = r.fehlerhaft;
+        ersterFehler = r.ersterFehler;
+        gesamtSeiten = r.gesamt;
       } else {
         gefunden = await claudeAnfrage(
           apiKey,
@@ -1634,7 +1651,13 @@
         gefunden.forEach((r) => { r.seiten = [1]; });
       }
 
-      if (!gefunden.length) throw new Error("Es wurde keine Rechnung erkannt.");
+      // Die eigentliche Ursache nicht verschlucken: Schlägt jede Seite fehl, ist die
+      // API-Meldung das Einzige, womit sich das Problem eingrenzen lässt.
+      if (!gefunden.length) {
+        throw new Error(ersterFehler
+          ? `Keine Rechnung erkannt. ${fehlerhaft} von ${gesamtSeiten} Seiten fehlgeschlagen — ${ersterFehler}`
+          : "Es wurde keine Rechnung erkannt. Die Seiten wurden gelesen, enthielten aber keine erkennbare Rechnung.");
+      }
 
       // Jede Rechnung bekommt ihre eigenen Seiten als Belegdatei — sonst hinge an allen
       // Einträgen eines Stapel-Scans dieselbe vielseitige PDF.
