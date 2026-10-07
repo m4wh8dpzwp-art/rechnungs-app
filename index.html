@@ -289,6 +289,25 @@
   textarea { resize: vertical; min-height: 60px; }
   .field-highlight input { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); font-weight: 650; }
 
+  /* Passwortfeld mit Anzeigen-Knopf — damit sich ein hinterlegter Schlüssel
+     auf dem Gerät auch wieder ablesen lässt */
+  .geheim-reihe { display: flex; gap: 8px; align-items: stretch; }
+  .geheim-reihe input { flex: 1; min-width: 0; }
+  .geheim-zeigen {
+    flex: none;
+    width: auto;
+    padding: 0 12px;
+    font-size: .78rem;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .geheim-zeigen:hover { color: var(--text); background: var(--surface-2); }
+
   /* ---------- Summary ---------- */
   .summary {
     display: grid;
@@ -834,7 +853,10 @@
       <div class="card stack">
         <div>
           <label for="apiKey">API-Key</label>
-          <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <div class="geheim-reihe">
+            <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <button type="button" class="geheim-zeigen" data-fuer="apiKey">Anzeigen</button>
+          </div>
         </div>
         <div>
           <label for="model">Modell</label>
@@ -870,7 +892,10 @@
         </div>
         <div>
           <label for="syncToken">Fine-grained Token</label>
-          <input type="password" id="syncToken" placeholder="github_pat_..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <div class="geheim-reihe">
+            <input type="password" id="syncToken" placeholder="github_pat_..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <button type="button" class="geheim-zeigen" data-fuer="syncToken">Anzeigen</button>
+          </div>
         </div>
         <button class="btn-primary" id="saveSyncBtn">Sync aktivieren</button>
         <button class="btn-secondary hidden" id="syncNowBtn">Jetzt synchronisieren</button>
@@ -1162,6 +1187,19 @@
     closeSettings();
   });
   modelSelect.addEventListener("change", () => localStorage.setItem(LS_KEY_MODEL, modelSelect.value));
+
+  // Hinterlegte Schlüssel wieder sichtbar machen. Ein Token ist bei GitHub nach dem Anlegen
+  // nicht mehr abrufbar — ohne diesen Knopf ist das Gerät, auf dem er noch liegt, die einzige
+  // Quelle, und ein verdecktes Feld gibt ihn nicht her.
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".geheim-zeigen");
+    if (!btn) return;
+    const feld = $(btn.getAttribute("data-fuer"));
+    if (!feld) return;
+    const sichtbar = feld.type === "text";
+    feld.type = sichtbar ? "password" : "text";
+    btn.textContent = sichtbar ? "Anzeigen" : "Verbergen";
+  });
 
   // Welcher Stand läuft gerade? Ohne diese Anzeige ist von außen nicht erkennbar, ob nach
   // einem Deployment noch eine alte Fassung aus einem Cache bedient wird — das hat beim

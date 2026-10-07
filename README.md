@@ -29,6 +29,9 @@ Daten löschen) steckt hinter dem Zahnrad oben rechts.
    Beim allerersten Start öffnen sich die Einstellungen automatisch; ein roter Punkt am
    Zahnrad zeigt an, dass noch kein Key hinterlegt ist.
    - Einen Key bekommst du in der [Anthropic Console](https://console.anthropic.com/settings/keys).
+   - Neben beiden Schlüsselfeldern (API-Key und Sync-Token) sitzt ein **„Anzeigen"**-Knopf. Weil
+     GitHub einen Fine-grained Token nach dem Anlegen nicht mehr herausgibt, ist das Gerät, auf
+     dem er hinterlegt ist, die einzige Stelle, an der er sich noch ablesen lässt.
    - Der Key wird nur in deinem Browser (`localStorage`) gespeichert und ausschließlich direkt
      an `api.anthropic.com` gesendet. Es gibt keinen Zwischenserver. Da alles client-seitig
      läuft, ist der Key im Browser (z.B. über die Entwicklertools) einsehbar — nutze die App
